@@ -1,0 +1,8 @@
+[package]
+name = "sc_rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# evalexpr = "13.0.0"
+evalexpr = { path='../evalexpr' }
