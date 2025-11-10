@@ -1,14 +1,11 @@
-use std::{fmt::Display, thread::yield_now};
+use std::fmt::Display;
 
 use evalexpr::*;
-use ratatui::{
-    layout::{Constraint, Layout, Rect}, style::{Style, palette::material::WHITE, *}, widgets::{Paragraph, Widget}
-};
 
 use crate::ctx;
 
 // if this is very large at all it will overflow the stack
-const LEN: usize = 100;
+pub const LEN: usize = 100;
 
 pub struct Grid {
     //  a b c ...
@@ -58,14 +55,13 @@ impl Grid {
                 return Some(val);
             }
             Err(e) => match e {
-                EvalexprError::VariableIdentifierNotFound(e) => {
+                EvalexprError::VariableIdentifierNotFound(_e) => {
                     // panic!("Will not be able to parse this equation, cell {e} not found")
                     return None
                 }
                 _ => panic!("{}", e),
             },
         }
-        None
     }
 
     fn parse_to_idx(i: &str) -> (usize, usize) {
@@ -123,7 +119,7 @@ impl Grid {
         (c.to_ascii_lowercase() as usize - 97) + 26 * idx
     }
 
-    fn num_to_char(idx: usize) -> String {
+    pub fn num_to_char(idx: usize) -> String {
         /*
           A = 0 
          AA = 26 
@@ -249,95 +245,4 @@ fn i_to_c() {
     assert_eq!(Grid::num_to_char(26), "AA");
     assert_eq!(Grid::num_to_char(51), "AZ");
     assert_eq!(Grid::num_to_char(701), "ZZ");
-}
-
-impl Widget for &Grid {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
-        let len = LEN as u16;
-
-        let cell_height = 1;
-        let cell_length = 5;
-
-
-        let x_max = if area.width / cell_length > len {
-            len - 1
-        } else {
-            area.width / cell_length
-        };
-        let y_max = if area.height / cell_height > len {
-            len - 1
-        } else {
-            area.height / cell_height
-        };
-
-        for x in 0..x_max {
-            for y in 0..y_max {
-                let mut display = String::new();
-                let mut style = Style::new().white();
-
-                const ORANGE1: Color = Color::Rgb(200, 160, 0);
-                const ORANGE2: Color = Color::Rgb(180, 130, 0);
-
-                match (x == 0, y == 0) {
-                    (true, true) => {},
-                    (true, false) => {
-                        // row names
-                        display = y.to_string();
-                        
-                        let bg = if y%2==0 {
-                            ORANGE1
-                        } else {
-                            ORANGE2
-                        };
-                        style = Style::new().fg(Color::White).bg(bg);
-
-                    },
-                    (false, true) => {
-                        // column names
-                        display = Grid::num_to_char(x as usize -1);
-
-                        let bg = if x%2==0 {
-                            ORANGE1
-                        } else {
-                            ORANGE2
-                        };
- 
-                        style = Style::new().fg(Color::White).bg(bg)
-                    },
-                    (false, false) => {
-                        // minus 1 because of header cells
-                        let x_idx = x as usize -1;
-                        let y_idx = y as usize -1;
-
-                        if let Some(cell) = self.get_cell_raw(x_idx, y_idx) {
-                            display = cell.as_raw_string();
-
-                            if cell.can_be_number() {
-                                if let Some(val) = self.evaluate(&cell.as_raw_string()) {
-                                    display = val.to_string();
-                                } else {
-                                    // broken formulas
-                                    if cell.is_equation() {
-                                        style = Style::new().underline_color(Color::Red).add_modifier(Modifier::UNDERLINED)
-                                    }
-                                }
-                            }
-                        }
-                        if (x_idx, y_idx) == self.selected_cell {
-                            style = Style::new().fg(Color::Black).bg(Color::White);
-                        }
-                    }
-                }
-
-                let area = Rect::new(
-                    area.x + (x * cell_length),
-                    area.y + (y * cell_height),
-                    cell_length,
-                    cell_height,
-                );
-
-                Paragraph::new(display).style(style).render(area, buf);
-            }
-        }
-    }
 }
