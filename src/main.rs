@@ -1,205 +1,198 @@
+// #![feature(impl_trait_in_bindings)]
+
+mod calc;
 mod ctx;
 
-use std::rc::Rc;
+use std::io;
 
-use evalexpr::*;
+use ratatui::{
+    crossterm::event,
+    layout::{Constraint, Layout},
+    text::*,
+    widgets::{Paragraph, Widget},
+    *,
+};
 
-// if this is very large at all it will overflow the stack
-const LEN: usize = 100;
-
-struct Grid {
-    //  a b c ...
-    // 0
-    // 1
-    // 2
-    // ...
-    cells: [[Option<Box<dyn Cell>>; LEN]; LEN],
-}
-
-impl std::fmt::Debug for Grid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Grid").field("cells", &"Too many to print").finish()
-    }
-}
-
-impl Grid {
-    fn new() -> Self {
-        let b: [[Option<Box<dyn Cell>>; LEN]; LEN] =
-            core::array::from_fn(|_| core::array::from_fn(|_| None));
-
-        Self { cells: b }
-    }
-
-    fn eval(&self, mut eq: &str) -> f64 {
-        if eq.starts_with('=') {
-            eq = &eq[1..];
-        }
-
-        let mut ctx = ctx::CallbackContext::<DefaultNumericTypes>::new(Rc::new(self));
-        // let mut ctx = HashMapContext::<DefaultNumericTypes>::new();
-
-        let val;
-        loop {
-            match eval_with_context(eq, &ctx) {
-                Ok(e) => {
-                    val = e.as_float().expect("Should be float");
-                    break;
-                }
-                Err(e) => match e {
-                    // TODO this is kinda a slow way to do this, the equation will get parsed
-                    // multiple times. Might be good to modify the lib so that you can provide
-                    // a callback for variables that are not found.
-                    EvalexprError::VariableIdentifierNotFound(e) => {
-                        panic!("Will not be able to parse this equation, cell {e} not found")
-                    }
-                    _ => panic!("{}", e),
-                },
-            }
-        }
-        val
-    }
-
-    fn parse_to_idx(i: &str) -> (usize, usize) {
-        let chars = i
-            .chars()
-            .take_while(|c| c.is_alphabetic())
-            .collect::<Vec<char>>();
-        let nums = i
-            .chars()
-            .skip(chars.len())
-            .take_while(|c| c.is_numeric())
-            .collect::<String>();
-
-        // get the x index from the chars
-        let x_idx = chars
-            .iter()
-            .enumerate()
-            .map(Self::char_to_idx)
-            .fold(0, |a, b| a + b);
-
-        // get the y index from the numbers
-        let y_idx = nums
-            .parse::<usize>()
-            .expect("Got non-number character after sorting for just numeric characters");
-
-        (x_idx, y_idx)
-    }
-
-    fn set_cell(&mut self, cell_id: &str, val: Box<dyn Cell>) {
-        let (x, y) = Self::parse_to_idx(cell_id);
-        // TODO check oob
-        self.cells[x][y] = Some(val);
-    }
-
-    /// Get cells via text like:
-    /// A6
-    /// F0
-    fn get_cell(&self, cell_id: &str) -> &Option<Box<dyn Cell>> {
-        let (x, y) = Self::parse_to_idx(cell_id);
-        // TODO check oob
-        &self.cells[x][y]
-    }
-
-    // this function has unit tests
-    fn char_to_idx((idx, c): (usize, &char)) -> usize {
-        (c.to_ascii_lowercase() as usize - 97) + 26 * idx
-    }
-}
-
-impl Default for Grid {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-trait Cell {
-    fn to_string(&self) -> String;
-    fn can_be_number(&self) -> bool;
-    fn as_num(&self) -> f32;
-    fn is_eq(&self) -> bool {
-        self.to_string().starts_with('=')
-    }
-}
-
-impl Cell for f32 {
-    fn to_string(&self) -> String {
-        ToString::to_string(self)
-    }
-
-    fn can_be_number(&self) -> bool {
-        true
-    }
-
-    fn as_num(&self) -> f32 {
-        *self
-    }
-}
-
-impl Cell for &str {
-    fn to_string(&self) -> String {
-        ToString::to_string(self)
-    }
-
-    fn can_be_number(&self) -> bool {
-        // checking if the string is an equation
-        self.starts_with('=')
-    }
-
-    fn as_num(&self) -> f32 {
-        unimplemented!("&str cannot be used in a numeric context")
-    }
-}
+use crate::calc::Grid;
 
 #[test]
 fn test_math() {
+    use evalexpr::*;
+
     let mut grid = Grid::new();
-    grid.set_cell("A0", Box::new(2.));
-    grid.set_cell("B0", Box::new(1.));
-    grid.set_cell("C0", Box::new("=A0+B0"));
+    grid.set_cell("A0", 2.);
+    grid.set_cell("B0", 1.);
+    grid.set_cell("C0", "=A0+B0".to_string());
 
     assert_eq!(eval("1+2").unwrap(), Value::Int(3));
 
-    let disp = &grid.get_cell("C0");
-    if let Some(inner) = disp {
-        if inner.is_eq() {
-            println!("{}", inner.to_string());
-            let display = grid.eval(&inner.to_string());
-            assert_eq!(display, 3.);
+    let cell_text = &grid.get_cell("C0");
+    if let Some(text) = cell_text {
+        if text.is_equation() {
+            println!("{}", text.as_raw_string());
+            let display = grid.evaluate(&text.as_raw_string());
+            assert_eq!(display, Some(3.));
             return;
         }
     }
     panic!("Should've found the value and returned");
 }
 
-#[test]
-fn test_cells() {
-    let mut grid = Grid::new();
+fn main() -> Result<(), std::io::Error> {
+    let term = ratatui::init();
+    let mut app = App::new();
+    app.grid.set_cell("A0", 10.);
+    app.grid.set_cell("B1", 10.);
+    app.grid.set_cell("C2", "=A0+B1".to_string());
 
-    assert!(&grid.cells[0][0].is_none());
-    grid.set_cell("A0", Box::new("Hello"));
-    assert!(grid.get_cell("A0").is_some());
-
-    assert_eq!(
-        grid.get_cell("A0").as_ref().unwrap().to_string(),
-        String::from("Hello")
-    );
+    let res = app.run(term);
+    ratatui::restore();
+    return res;
 }
 
-#[test]
-fn c_to_i() {
-    assert_eq!(Grid::char_to_idx((0, &'a')), 0);
-    assert_eq!(Grid::char_to_idx((0, &'A')), 0);
-    assert_eq!(Grid::char_to_idx((0, &'z')), 25);
-    assert_eq!(Grid::char_to_idx((0, &'Z')), 25);
-    assert_eq!(Grid::char_to_idx((1, &'a')), 26);
-
-    assert_eq!(Grid::parse_to_idx("A0"), (0, 0));
-    assert_eq!(Grid::parse_to_idx("AA0"), (26, 0));
-    assert_eq!(Grid::parse_to_idx("A1"), (0, 1));
-    assert_eq!(Grid::parse_to_idx("A10"), (0, 10));
-    assert_eq!(Grid::parse_to_idx("Aa10"), (26, 10));
+struct App {
+    exit: bool,
+    grid: Grid,
+    /// Buffer for key-chords
+    chord_buf: String,
+    editor: Option<Editor>,
 }
 
-fn main() {
-    println!("Only tests exist atm");
+impl Widget for &App {
+    fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
+        Paragraph::new("Status").render(area, buf);
+    }
+}
+
+impl App {
+    fn new() -> Self {
+        Self {
+            exit: false,
+            grid: Grid::new(),
+            chord_buf: String::new(),
+            editor: None,
+        }
+    }
+
+    fn run(&mut self, mut term: DefaultTerminal) -> Result<(), std::io::Error> {
+        while !self.exit {
+            term.draw(|frame| self.draw(frame))?;
+            self.handle_events()?;
+        }
+        Ok(())
+    }
+    fn draw(&self, frame: &mut Frame) {
+
+        let layout = Layout::default()
+            .direction(layout::Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Min(1),
+                Constraint::Length(1),
+            ])
+            .split(frame.area());
+
+        if let Some(editor) = &self.editor {
+            frame.render_widget(editor, layout[0]);
+        } else {
+            frame.render_widget(Paragraph::new("sc_rs"), layout[0]);
+        }
+
+        frame.render_widget(&self.grid, layout[1]);
+        frame.render_widget(self, layout[2]);
+    }
+
+    fn handle_events(&mut self) -> io::Result<()> {
+        match event::read()? {
+            event::Event::Key(key_event) => match key_event.code {
+                event::KeyCode::Enter => {
+                    if let Some(editor) = &self.editor {
+                        let loc= self.grid.selected_cell;
+
+                        let val = editor.buf.trim().to_string();
+
+                        // insert as number if at all possible
+                        if let Ok(val) = val.parse::<f64>() {
+                            self.grid.set_cell_raw(loc, val);
+                        } else {
+                            self.grid.set_cell_raw(loc, val);
+                        };
+
+                        self.editor = None;
+                    }
+                }
+                event::KeyCode::Backspace => {
+                    if let Some(editor) = &mut self.editor {
+                        editor.buf.pop();
+                    }
+                }
+                event::KeyCode::F(_) => todo!(),
+                event::KeyCode::Char(c) => {
+
+                    if let Some(editor) = &mut self.editor {
+                        editor.buf += &c.to_string();
+                        return Ok(());
+                    }
+
+                    if !self.chord_buf.is_empty() {}
+
+                    match c {
+                        'q' => self.exit = true,
+                        // <
+                        'h' => self.grid.selected_cell.0 = self.grid.selected_cell.0.saturating_sub(1),
+                        // v
+                        'j' => self.grid.selected_cell.1 = self.grid.selected_cell.1.saturating_add(1),
+                        // ^
+                        'k' => self.grid.selected_cell.1 = self.grid.selected_cell.1.saturating_sub(1),
+                        // >
+                        'l' => self.grid.selected_cell.0 = self.grid.selected_cell.0.saturating_add(1),
+                        // edit cell
+                        'i' | 'a' => {
+                            let (x,y) = self.grid.selected_cell;
+                            let starting_val = if let Some(val) = self.grid.get_cell_raw(x, y) {
+                                val.as_raw_string()
+                            } else {
+                                String::new()
+                            };
+                            self.editor = Some(Editor::from(starting_val))
+                        },
+                        'I' => {/* insert col before */}
+                        'A' => {/* insert col after */}
+                        'o' => {/* insert row below */}
+                        'O' => {/* insert row above */}
+                        ':' => {/* enter command mode */}
+                        c => {
+                            // start entering c for words
+                            self.chord_buf += &c.to_string();
+                        }
+                    }
+                },
+                _ => {}
+            },
+            _ => {}
+            event::Event::Paste(_) => todo!(),
+            event::Event::Resize(_, _) => todo!(),
+        }
+        Ok(())
+    }
+}
+
+struct Editor {
+    buf: String,
+    cursor: usize,
+}
+
+impl From<String> for Editor {
+    fn from(value: String) -> Self {
+        Self {
+            buf: value.to_string(),
+            cursor: value.len(),
+        }
+    }
+}
+
+impl Widget for &Editor {
+    fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
+        Paragraph::new(self.buf.clone()).render(area, buf);
+    }
 }
