@@ -5,10 +5,10 @@ use ratatui::{DefaultTerminal, Frame, crossterm::event, layout::{self, Constrain
 use crate::app::{calc::{Grid, LEN}, mode::Mode};
 
 pub struct App {
-    exit: bool,
+    pub exit: bool,
     pub grid: Grid,
     pub mode: Mode,
-    file: Option<PathBuf>,
+    pub file: Option<PathBuf>,
 }
 
 impl Widget for &App {
@@ -17,7 +17,6 @@ impl Widget for &App {
 
         let cell_height = 1;
         let cell_length = 5;
-
 
         let x_max = if area.width / cell_length > len {
             len - 1
@@ -30,13 +29,40 @@ impl Widget for &App {
             area.height / cell_height
         };
 
+        let is_selected = |x: usize, y: usize| -> bool {
+            if let Mode::Visual((mut x1, mut y1)) = self.mode {
+                let (mut x2, mut y2) = self.grid.selected_cell;
+                x1 += 1;
+                y1 += 1;
+                x2 += 1;
+                y2 += 1;
+
+
+
+                if x >= x1 && x <= x2{
+                    // in-between the Xs
+                    if y >= y1 && y <= y2 {
+                        // in-between the Ys
+                        return true
+                    }
+                }
+
+            }
+            false
+        };
+
         for x in 0..x_max {
             for y in 0..y_max {
                 let mut display = String::new();
                 let mut style = Style::new().fg(Color::White);
 
+                if is_selected(x.into(),y.into()) {
+                    style = style.fg(Color::LightMagenta).bg(Color::Blue);
+                }
+
                 const ORANGE1: Color = Color::Rgb(200, 160, 0);
                 const ORANGE2: Color = Color::Rgb(180, 130, 0);
+
 
                 match (x == 0, y == 0) {
                     (true, true) => {
@@ -159,7 +185,7 @@ impl App {
                 }),
                 layout[0],
             ),
-            Mode::Visual(start_pos) => {}
+            Mode::Visual(_) => {}
         }
 
         frame.render_widget(self, layout[1]);
@@ -172,32 +198,7 @@ impl App {
                 event::Event::Key(key) => match key.code {
                     event::KeyCode::Esc => self.mode = Mode::Normal,
                     event::KeyCode::Char(c) => {
-                        chord.add_char(c);
-                        match chord.as_string()[0..chord.as_string().len() - 1].parse::<usize>() {
-                            Ok(num) => match c {
-                                'G' => {
-                                    let sel = self.grid.selected_cell;
-                                    self.grid.selected_cell = (sel.0, num);
-                                    self.mode = Mode::Normal;
-                                }
-                                _ => {
-                                    if c.is_alphabetic() {
-                                        self.mode = Mode::Normal;
-                                        for _ in 0..num {
-                                            Mode::process_key(self, c);
-                                        }
-                                    }
-                                }
-                            },
-                            Err(_) => match chord.as_string().as_str() {
-                                "d " | "dw" => {
-                                    let loc = self.grid.selected_cell;
-                                    self.grid.set_cell_raw(loc, String::new());
-                                    self.mode = Mode::Normal;
-                                }
-                                _ => {}
-                            },
-                        }
+                        Mode::process_key(self, c);
                     }
                     event::KeyCode::Backspace => {
                         chord.backspace();
@@ -243,12 +244,11 @@ impl App {
                 },
                 _ => todo!(),
             },
-            Mode::Visual(start_pos) => {
+            Mode::Visual(_start_pos) => {
                 if let event::Event::Key(key) = event::read()? {
                     match key.code {
                         event::KeyCode::Char(c) => {
                             Mode::process_key(self, c);
-                            todo!();
                         }
                         event::KeyCode::Esc => self.mode = Mode::Normal,
                         _ => {}
@@ -262,12 +262,7 @@ impl App {
                         self.mode = Mode::Normal;
                     }
                     event::KeyCode::Enter => {
-                        // [':', 'q']
-                        match editor.as_string().as_bytes()[1] as char {
-                            'w' => {}
-                            'q' => self.exit = true,
-                            _ => {}
-                        }
+                        Mode::process_cmd(self);
                         self.mode = Mode::Normal;
                     }
                     event::KeyCode::Backspace => {
