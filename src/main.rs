@@ -52,15 +52,17 @@ enum Mode {
     Chord(Chord),
     Normal,
     Command(Chord),
+    Visual((usize, usize)),
 }
 
 impl Display for Mode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Mode::Insert(_) => write!(f, "- INSERT -"),
-            Mode::Chord(_) => write!(f, "- CHORD -"),
-            Mode::Normal => write!(f, "- NORMAL -"),
-            Mode::Command(_) => write!(f, "- COMMAND -"),
+            Mode::Normal => write!(f, "-- NORMAL --"),
+            Mode::Insert(_) => write!(f, "-- INSERT --"),
+            Mode::Chord(_) => write!(f, "-- CHORD --"),
+            Mode::Command(_) => write!(f, "-- COMMAND --"),
+            Mode::Visual(_) => write!(f, "-- VISUAL --"),
         }
     }
 }
@@ -76,21 +78,28 @@ impl Mode {
             'k' => app.grid.selected_cell.1 = app.grid.selected_cell.1.saturating_sub(1),
             // >
             'l' => app.grid.selected_cell.0 = app.grid.selected_cell.0.saturating_add(1),
-            // edit cell
-            'i' | 'a' => {
-                let (x, y) = app.grid.selected_cell;
+            _ => {}
+        }
 
-                let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| f.as_raw_string()).unwrap_or(String::new());
+        if let Mode::Normal = app.mode {
+            match key {
+                // edit cell
+                'i' | 'a' => {
+                    let (x, y) = app.grid.selected_cell;
 
-                app.mode = Mode::Insert(Editor::new(val, (x, y)));
+                    let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| f.as_raw_string()).unwrap_or(String::new());
+
+                    app.mode = Mode::Insert(Editor::new(val, (x, y)));
+                }
+                'I' => { /* insert col before */ }
+                'A' => { /* insert col after */ }
+                'o' => { /* insert row below */ }
+                'O' => { /* insert row above */ }
+                'v' => app.mode = Mode::Visual(app.grid.selected_cell),
+                ':' => app.mode = Mode::Command(Chord::new(':')),
+                // loose chars will put you into chord mode
+                c => app.mode = Mode::Chord(Chord::new(c)),
             }
-            'I' => { /* insert col before */ }
-            'A' => { /* insert col after */ }
-            'o' => { /* insert row below */ }
-            'O' => { /* insert row above */ }
-            ':' => app.mode = Mode::Command(Chord::new(':')),
-            // loose chars will put you into chord mode
-            c => app.mode = Mode::Chord(Chord::new(c)),
         }
     }
 }
@@ -153,6 +162,7 @@ impl App {
                 }),
                 layout[0],
             ),
+            Mode::Visual(start_pos) => {}
         }
 
         frame.render_widget(&self.grid, layout[1]);
@@ -182,7 +192,14 @@ impl App {
                                     }
                                 }
                             },
-                            _ => {}
+                            Err(_) => match chord.as_string().as_str() {
+                                "d " | "dw" => {
+                                    let loc = self.grid.selected_cell;
+                                    self.grid.set_cell_raw(loc, String::new());
+                                    self.mode = Mode::Normal;
+                                }
+                                _ => {}
+                            },
                         }
                     }
                     _ => {}
@@ -226,6 +243,18 @@ impl App {
                 },
                 _ => todo!(),
             },
+            Mode::Visual(start_pos) => {
+                if let event::Event::Key(key) = event::read()? {
+                    match key.code {
+                        event::KeyCode::Char(c) => {
+                            Mode::process_key(self, c);
+                            todo!();
+                        }
+                        event::KeyCode::Esc => self.mode = Mode::Normal,
+                        _ => {}
+                    }
+                }
+            }
             Mode::Command(editor) => match event::read()? {
                 event::Event::Key(key) => match key.code {
                     event::KeyCode::Esc => {
