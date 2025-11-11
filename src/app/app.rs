@@ -16,7 +16,7 @@ impl Widget for &App {
         let len = LEN as u16;
 
         let cell_height = 1;
-        let cell_length = 5;
+        let cell_length = 10;
 
         let x_max = if area.width / cell_length > len {
             len - 1
@@ -161,35 +161,44 @@ impl App {
     fn draw(&self, frame: &mut Frame) {
         let layout = Layout::default()
             .direction(layout::Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(1), Constraint::Length(1)])
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Min(1),
+            ])
             .split(frame.area());
+
+        let cmd_line = layout[0];
+        let body = layout[1];
 
         let bottom_split = Layout::default()
             .direction(layout::Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(layout[2]);
+            .split(cmd_line);
+
+        let cmd_line_left = bottom_split[0];
+        let cmd_line_right = bottom_split[1];
 
         match &self.mode {
             Mode::Insert(editor) => {
-                frame.render_widget(editor, layout[0]);
+                frame.render_widget(editor, cmd_line_left);
             }
             Mode::Command(editor) => {
-                frame.render_widget(editor, bottom_split[0]);
+                frame.render_widget(editor, cmd_line_left);
             }
-            Mode::Chord(chord) => frame.render_widget(chord, bottom_split[0]),
+            Mode::Chord(chord) => frame.render_widget(chord, cmd_line_left),
             Mode::Normal => frame.render_widget(
                 Paragraph::new({
                     let (x, y) = self.grid.selected_cell;
                     let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.as_raw_string()).unwrap_or_default();
                     cell
                 }),
-                layout[0],
+                cmd_line_left,
             ),
             Mode::Visual(_) => {}
         }
 
-        frame.render_widget(self, layout[1]);
-        frame.render_widget(&self.mode, bottom_split[1]);
+        frame.render_widget(self, body);
+        frame.render_widget(&self.mode, cmd_line_right);
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
