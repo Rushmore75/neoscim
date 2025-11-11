@@ -2,10 +2,10 @@ use std::fmt::Display;
 
 use evalexpr::*;
 
-use crate::ctx;
+use crate::app::ctx;
 
 // if this is very large at all it will overflow the stack
-pub const LEN: usize = 100;
+pub const LEN: usize = 10;
 
 pub struct Grid {
     //  a b c ...
@@ -13,7 +13,7 @@ pub struct Grid {
     // 1
     // 2
     // ...
-    cells: [[Option<Box<dyn Cell>>; LEN]; LEN],
+    cells: [[Option<CellType>; LEN]; LEN],
     /// (X, Y)
     pub selected_cell: (usize, usize),
 }
@@ -29,7 +29,7 @@ impl std::fmt::Debug for Grid {
 impl Grid {
     pub fn new() -> Self {
         // TODO this needs to be moved to the heap
-        let b: [[Option<Box<dyn Cell>>; LEN]; LEN] =
+        let b: [[Option<CellType>; LEN]; LEN] =
             core::array::from_fn(|_| core::array::from_fn(|_| None));
 
         Self {
@@ -90,12 +90,12 @@ impl Grid {
         (x_idx, y_idx)
     }
 
-    pub fn set_cell<T: Into<Box<dyn Cell>>>(&mut self, cell_id: &str, val: T) {
+    pub fn set_cell<T: Into<CellType>>(&mut self, cell_id: &str, val: T) {
         let loc = Self::parse_to_idx(cell_id);
         self.set_cell_raw(loc, val);
     }
 
-    pub fn set_cell_raw<T: Into<Box<dyn Cell>>>(&mut self, (x,y): (usize, usize), val: T) {
+    pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x,y): (usize, usize), val: T) {
         // TODO check oob
         self.cells[x][y] = Some(val.into());
     }
@@ -104,13 +104,15 @@ impl Grid {
     /// A6,
     /// F0,
     /// etc
-    pub fn get_cell(&self, cell_id: &str) -> &Option<Box<dyn Cell>> {
+    pub fn get_cell(&self, cell_id: &str) -> &Option<CellType> {
         let (x, y) = Self::parse_to_idx(cell_id);
         self.get_cell_raw(x, y)
     }
 
-    pub fn get_cell_raw(&self, x: usize, y: usize) -> &Option<Box<dyn Cell>> {
-        // TODO check oob
+    pub fn get_cell_raw(&self, x: usize, y: usize) -> &Option<CellType> {
+        if x >= LEN || y >= LEN {
+            return &None
+        }
         &self.cells[x][y]
     }
 
@@ -144,68 +146,50 @@ impl Default for Grid {
     }
 }
 
-pub trait Cell {
-    /// Important! This is IS NOT the return value of an equation.
-    /// This is the raw equation it's self.
-    fn as_raw_string(&self) -> String;
-    fn can_be_number(&self) -> bool;
-    fn as_num(&self) -> f64;
-    fn is_equation(&self) -> bool {
-        self.as_raw_string().starts_with('=')
+pub enum CellType {
+    Number(f64),
+    String(String),
+    Equation(String),
+}
+
+impl Into<CellType> for f64 {
+    fn into(self) -> CellType {
+        CellType::duck_type(self.to_string())
     }
 }
 
-impl Display for dyn Cell {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Into<CellType> for String {
+    fn into(self) -> CellType {
+        CellType::duck_type(self)
+    }
+}
 
-        let disp = if self.can_be_number() {
-            self.as_num().to_string()
+impl CellType {
+    fn duck_type<'a>(value: impl Into<String>) -> Self {
+        let value = value.into();
+
+        if let Ok(parse) = value.parse::<f64>() {
+            Self::Number(parse)
         } else {
-            self.as_raw_string()
+            if value.starts_with('=') {
+                Self::Equation(value)
+            } else {
+                Self::String(value)
+            }
+        }
+    }
+}
+
+impl Display for CellType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let d = match self {
+            CellType::Number(n) => n.to_string(),
+            CellType::String(n) => n.to_owned(),
+            CellType::Equation(r) => {
+                r.to_owned()
+            },
         };
-
-        write!(f, "{disp}")
-    }
-}
-
-impl Cell for f64 {
-    fn as_raw_string(&self) -> String {
-        ToString::to_string(self)
-    }
-
-    fn can_be_number(&self) -> bool {
-        true
-    }
-
-    fn as_num(&self) -> f64 {
-        *self
-    }
-}
-
-impl Into<Box<dyn Cell>> for f64 {
-    fn into(self) -> Box<dyn Cell> {
-        Box::new(self)
-    }
-}
-
-impl Into<Box<dyn Cell>> for String {
-    fn into(self) -> Box<dyn Cell> {
-        Box::new(self)
-    }
-}
-
-impl Cell for String {
-    fn as_raw_string(&self) -> String {
-        ToString::to_string(self)
-    }
-
-    fn can_be_number(&self) -> bool {
-        // checking if the string is an equation
-        self.starts_with('=')
-    }
-
-    fn as_num(&self) -> f64 {
-        unimplemented!("&str cannot be used in a numeric context")
+        write!(f, "{d}")
     }
 }
 
@@ -218,7 +202,7 @@ fn test_cells() {
     assert!(grid.get_cell("A0").is_some());
 
     assert_eq!(
-        grid.get_cell("A0").as_ref().unwrap().as_raw_string(),
+        grid.get_cell("A0").as_ref().unwrap().to_string(),
         String::from("Hello")
     );
 }
@@ -245,4 +229,76 @@ fn i_to_c() {
     assert_eq!(Grid::num_to_char(26), "AA");
     assert_eq!(Grid::num_to_char(51), "AZ");
     assert_eq!(Grid::num_to_char(701), "ZZ");
+}
+
+#[test]
+fn test_math() {
+    use evalexpr::*;
+
+    let mut grid = Grid::new();
+    grid.set_cell("A0", 2.);
+    grid.set_cell("B0", 1.);
+    grid.set_cell("C0", "=A0+B0".to_string());
+
+    assert_eq!(eval("1+2").unwrap(), Value::Int(3));
+    if let Some(cell) = grid.get_cell("C0") {
+        match cell {
+            CellType::Number(_) => todo!(),
+            CellType::String(_) => todo!(),
+            CellType::Equation(a) => {
+                let res = grid.evaluate(&a);
+                assert!(res.is_some());
+                assert_eq!(res.unwrap(), 3.);
+                return;
+            },
+        }
+    }
+    
+    panic!("Should've found the value and returned");
+}
+
+#[test]
+fn fn_of_fn() {
+    let mut grid = Grid::new();
+    grid.set_cell("A0", 2.);
+    grid.set_cell("B0", 1.);
+    grid.set_cell("C0", "=A0+B0".to_string());
+    grid.set_cell("D0", "=C0*2".to_string());
+
+    if let Some(cell) = grid.get_cell("D0") {
+        let res = grid.evaluate(&cell.to_string());
+
+        assert!(res.is_some());
+        assert_eq!(res.unwrap(), 6.);
+    }
+}
+
+#[test]
+fn circular_reference_cells() {
+    let mut grid = Grid::new();
+    grid.set_cell("A0", "=B0".to_string());
+    grid.set_cell("B0", "=A0".to_string());
+
+    if let Some(cell) = grid.get_cell("A0") {
+        let res = grid.evaluate(&cell.to_string());
+        assert!(res.is_none());
+    }
+}
+
+#[test]
+fn fn_of_fn_one_shot() {
+    let mut grid = Grid::new();
+    grid.set_cell("A0", 2.);
+    grid.set_cell("B0", 1.);
+    grid.set_cell("C0", "=A0+B0".to_string());
+    grid.set_cell("D0", "=C0*2".to_string());
+
+    grid.set_cell("E0", "=D0+C0".to_string());
+
+    if let Some(cell) = grid.get_cell("E0") {
+        let res = grid.evaluate(&cell.to_string());
+
+        assert!(res.is_some());
+        assert_eq!(res.unwrap(), 9.);
+    }
 }

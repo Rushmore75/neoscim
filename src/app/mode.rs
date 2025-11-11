@@ -1,10 +1,10 @@
-use std::fmt::Display;
+use std::{cmp::{max, min}, fmt::Display};
 
 use ratatui::{
-    layout::Rect, prelude, style::{Color, Modifier, Style}, widgets::{Paragraph, Widget}
+    prelude, style::{Color, Style}, widgets::{Paragraph, Widget}
 };
 
-use crate::app::{app::App};
+use crate::app::{app::App, calc::LEN, error_msg::ErrorMessage};
 
 pub enum Mode {
     Insert(Editor),
@@ -14,37 +14,33 @@ pub enum Mode {
     Visual((usize, usize)),
 }
 
-impl Widget for &Mode {
-    fn render(self, area: Rect, buf: &mut prelude::Buffer) {
-        let style = match self {
-            // Where you are typing - italic
-            Mode::Insert(_) => Style::new().fg(Color::Blue).add_modifier(Modifier::ITALIC),
-            Mode::Command(_) => Style::new().fg(Color::LightGreen).add_modifier(Modifier::ITALIC),
-            Mode::Chord(_) => Style::new().fg(Color::Blue).add_modifier(Modifier::ITALIC),
-            // Movement-based modes
-            Mode::Visual(_) => Style::new().fg(Color::Yellow),
-            Mode::Normal => Style::new().fg(Color::Green),
-        };
-
-        Paragraph::new(self.to_string())
-            .style(style)
-            .render(area, buf);
-    }
-}
-
 impl Display for Mode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Mode::Normal => write!(f, "-- NORMAL --"),
-            Mode::Insert(_) => write!(f, "-- INSERT --"),
-            Mode::Chord(_) => write!(f, "-- CHORD --"),
-            Mode::Command(_) => write!(f, "-- COMMAND --"),
-            Mode::Visual(_) => write!(f, "-- VISUAL --"),
+            Mode::Normal => write!(f, "NORMAL"),
+            Mode::Insert(_) => write!(f, "INSERT"),
+            Mode::Chord(_) => write!(f, "CHORD"),
+            Mode::Command(_) => write!(f, "COMMAND"),
+            Mode::Visual(_) => write!(f, "VISUAL"),
         }
     }
 }
 
 impl Mode {
+
+    pub fn get_style(&self) -> Style {
+        match self {
+            // Where you are typing
+            Mode::Insert(_) => Style::new().fg(Color::White).bg(Color::Blue),
+            Mode::Command(_) => Style::new().fg(Color::Black).bg(Color::Magenta),
+            Mode::Chord(_) => Style::new().fg(Color::Black).bg(Color::LightBlue),
+            // Movement-based modes
+            Mode::Visual(_) => Style::new().fg(Color::Yellow),
+            Mode::Normal => Style::new().fg(Color::Green),
+        }
+    }
+
+
     pub fn process_cmd(app: &mut App) {
         if let Mode::Command(editor) = &mut app.mode {
             // [':', 'q']
@@ -53,7 +49,7 @@ impl Mode {
                     if let Some(file) = &app.file {
                         unimplemented!("Figure out how we want to save Grid to a csv or something")
                     } else {
-                        // TODO figure out how to get an error message to the user
+                        app.error_msg = ErrorMessage::new("No file selected");
                     }
                 }
                 'q' => app.exit = true,
@@ -73,7 +69,7 @@ impl Mode {
                     }
                     // v
                     'j' => {
-                        app.grid.selected_cell.1 = app.grid.selected_cell.1.saturating_add(1);
+                        app.grid.selected_cell.1 = min(app.grid.selected_cell.1.saturating_add(1), LEN);
                         return;
                     }
                     // ^
@@ -83,7 +79,7 @@ impl Mode {
                     }
                     // >
                     'l' => {
-                        app.grid.selected_cell.0 = app.grid.selected_cell.0.saturating_add(1);
+                        app.grid.selected_cell.0 = min(app.grid.selected_cell.0.saturating_add(1), LEN);
                         return;
                     }
                     '0' => {
@@ -95,7 +91,7 @@ impl Mode {
                         let (x, y) = app.grid.selected_cell;
 
                         let val =
-                            app.grid.get_cell_raw(x, y).as_ref().map(|f| f.as_raw_string()).unwrap_or(String::new());
+                            app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or(String::new());
 
                         app.mode = Mode::Insert(Editor::new(val, (x, y)));
                     }

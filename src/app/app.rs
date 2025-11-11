@@ -11,6 +11,7 @@ use ratatui::{
 
 use crate::app::{
     calc::{Grid, LEN},
+    error_msg::ErrorMessage,
     mode::Mode,
 };
 
@@ -19,6 +20,7 @@ pub struct App {
     pub grid: Grid,
     pub mode: Mode,
     pub file: Option<PathBuf>,
+    pub error_msg: ErrorMessage,
 }
 
 impl Widget for &App {
@@ -75,14 +77,13 @@ impl Widget for &App {
                 const ORANGE2: Color = Color::Rgb(180, 130, 0);
 
                 match (x == 0, y == 0) {
+                    // 0,0 dead space
                     (true, true) => {
-                        let (x, y) = self.grid.selected_cell;
-                        let c = Grid::num_to_char(x);
-                        display = format!("{y}{c}",);
-                        style = Style::new().fg(Color::Green).bg(Color::Black);
+                        display = self.mode.to_string();
+                        style = self.mode.get_style();
                     }
+                    // row names
                     (true, false) => {
-                        // row names
                         display = y_idx.to_string();
 
                         let bg = if y_idx == self.grid.selected_cell.1 {
@@ -94,8 +95,8 @@ impl Widget for &App {
                         };
                         style = Style::new().fg(Color::White).bg(bg);
                     }
+                    // column names
                     (false, true) => {
-                        // column names
                         display = Grid::num_to_char(x_idx);
 
                         let bg = if x_idx == self.grid.selected_cell.0 {
@@ -108,19 +109,19 @@ impl Widget for &App {
 
                         style = Style::new().fg(Color::White).bg(bg)
                     }
+                    // grid squares
                     (false, false) => {
                         if let Some(cell) = self.grid.get_cell_raw(x_idx, y_idx) {
-                            display = cell.as_raw_string();
-
-                            if cell.can_be_number() {
-                                if let Some(val) = self.grid.evaluate(&cell.as_raw_string()) {
-                                    display = val.to_string();
-                                    style = Style::new()
-                                        .underline_color(Color::DarkGray)
-                                        .add_modifier(Modifier::UNDERLINED);
-                                } else {
-                                    // broken formulas
-                                    if cell.is_equation() {
+                            match cell {
+                                crate::app::calc::CellType::Number(c) => display = c.to_string(),
+                                crate::app::calc::CellType::String(s) => display = s.to_owned(),
+                                crate::app::calc::CellType::Equation(e) => {
+                                    if let Some(val) = self.grid.evaluate(e) {
+                                        display = val.to_string();
+                                        style = Style::new()
+                                            .underline_color(Color::DarkGray)
+                                            .add_modifier(Modifier::UNDERLINED);
+                                    } else {
                                         style =
                                             Style::new().underline_color(Color::Red).add_modifier(Modifier::UNDERLINED)
                                     }
@@ -152,6 +153,7 @@ impl App {
             grid: Grid::new(),
             mode: Mode::Normal,
             file: None,
+            error_msg: ErrorMessage::none(),
         }
     }
 
@@ -191,7 +193,7 @@ impl App {
             Mode::Normal => frame.render_widget(
                 Paragraph::new({
                     let (x, y) = self.grid.selected_cell;
-                    let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.as_raw_string()).unwrap_or_default();
+                    let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or_default();
                     cell
                 }),
                 cmd_line_left,
@@ -200,7 +202,7 @@ impl App {
         }
 
         frame.render_widget(self, body);
-        frame.render_widget(&self.mode, cmd_line_right);
+        frame.render_widget(&self.error_msg, cmd_line_right);
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -251,9 +253,9 @@ impl App {
                     event::KeyCode::Char(c) => {
                         Mode::process_key(self, c);
                     }
-                    _ => todo!(),
+                    _ => {}
                 },
-                _ => todo!(),
+                _ => {}
             },
             Mode::Visual(_start_pos) => {
                 if let event::Event::Key(key) = event::read()? {

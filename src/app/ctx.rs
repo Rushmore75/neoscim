@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use evalexpr::{error::EvalexprResultValue, *};
 
-use crate::Grid;
+use crate::app::calc::Grid;
 
 pub struct CallbackContext<'a, T: EvalexprNumericTypes = DefaultNumericTypes> {
     variables: &'a Grid,
@@ -40,8 +40,16 @@ impl<'a> Context for CallbackContext<'a, DefaultNumericTypes> {
 
     fn get_value(&self, identifier: &str) -> Option<Value<Self::NumericTypes>> {
         if let Some(v) = self.variables.get_cell(identifier) {
-            if v.can_be_number() {
-                return Some(Value::Float(v.as_num()));
+
+            match v {
+                super::calc::CellType::Number(n) => return Some(Value::Float(n.to_owned())),
+                super::calc::CellType::String(s) => unimplemented!("{s}"),
+                super::calc::CellType::Equation(eq) => {
+                    match eval_with_context(&eq[1..], self) {
+                        Ok(e) => return Some(e),
+                        Err(e) => panic!("{e} \"{eq}\""),
+                    }
+                },
             }
         }
         return None;

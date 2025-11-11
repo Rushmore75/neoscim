@@ -1,3 +1,5 @@
 pub mod app;
-pub mod calc;
-pub mod mode;
+mod calc;
+mod mode;
+mod error_msg;
+mod ctx;
