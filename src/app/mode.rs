@@ -64,7 +64,20 @@ impl Mode {
                 }
                 "q" => app.exit = true,
                 "set" => {
-                    // TODO solve issue #8
+                    if let Some(arg) = args.get(1) {
+                        let parts: Vec<&str> = arg.split('=').collect();
+                        if parts.len() != 2 {
+                            app.error_msg = ErrorMessage::new("set <key>=<value>");
+                            return;
+                        }
+                        let key = parts[0];
+                        let value = parts[1];
+
+                        app.vars.insert(key.to_owned(), value.to_owned());
+
+                    }
+                    app.error_msg = ErrorMessage::new("set <key>=<value>")
+
                 }
                 _ => {}
             }

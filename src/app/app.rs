@@ -1,4 +1,4 @@
-use std::{io, path::PathBuf};
+use std::{collections::HashMap, io, path::PathBuf};
 
 use ratatui::{
     DefaultTerminal, Frame,
@@ -21,14 +21,28 @@ pub struct App {
     pub mode: Mode,
     pub file: Option<PathBuf>,
     pub error_msg: ErrorMessage,
+    pub vars: HashMap<String, String>,
 }
 
 impl Widget for &App {
     fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
         let len = LEN as u16;
 
-        let cell_height = 1;
-        let cell_length = 10;
+        let mut cell_height = 1;
+        let mut cell_length = 10;
+
+        if let Some(h) = self.vars.get("height") {
+            if let Ok(p) = h.parse::<u16>() {
+                cell_height = p;
+            }
+        }
+        if let Some(l) = self.vars.get("length") {
+            if let Ok(p) = l.parse::<u16>() {
+                cell_length = p;
+            }
+        }
+
+
 
         let x_max = if area.width / cell_length > len { len - 1 } else { area.width / cell_length };
         let y_max = if area.height / cell_height > len { len - 1 } else { area.height / cell_height };
@@ -156,6 +170,7 @@ impl App {
             mode: Mode::Normal,
             file: None,
             error_msg: ErrorMessage::none(),
+            vars: HashMap::new(),
         }
     }
 
