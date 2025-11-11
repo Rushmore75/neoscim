@@ -13,7 +13,7 @@ pub struct Grid {
     // 1
     // 2
     // ...
-    cells: [[Option<CellType>; LEN]; LEN],
+    cells: Vec<Vec<Option<CellType>>>,
     /// (X, Y)
     pub selected_cell: (usize, usize),
 }
@@ -28,12 +28,17 @@ impl std::fmt::Debug for Grid {
 
 impl Grid {
     pub fn new() -> Self {
-        // TODO this needs to be moved to the heap
-        let b: [[Option<CellType>; LEN]; LEN] =
-            core::array::from_fn(|_| core::array::from_fn(|_| None));
+        let mut a = Vec::with_capacity(LEN);
+        for _ in 0..LEN {
+            let mut b = Vec::with_capacity(LEN);
+            for _ in 0..LEN {
+                b.push(None)
+            }
+            a.push(b)
+        }
 
         Self {
-            cells: b,
+            cells: a,
             selected_cell: (0, 0),
         }
     }
