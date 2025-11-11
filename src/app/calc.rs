@@ -51,7 +51,6 @@ impl Grid {
         }
 
         let ctx = ctx::CallbackContext::new(&self);
-        // let mut ctx = HashMapContext::<DefaultNumericTypes>::new();
 
         match eval_with_context(eq, &ctx) {
             Ok(e) => {
@@ -253,9 +252,20 @@ fn test_math() {
                 let res = grid.evaluate(&a);
                 assert!(res.is_some());
                 assert_eq!(res.unwrap(), 3.);
-                return;
             },
         }
+    }
+
+    grid.set_cell("D0", "=50/60".to_string());
+    let c = grid.get_cell("D0").as_ref().expect("I just set this");
+    match c {
+        CellType::Number(_) => todo!(),
+        CellType::String(_) => todo!(),
+        CellType::Equation(e) => {
+            let res = grid.evaluate(e).expect("Should work");
+            assert_eq!(res, 0.83);
+            return;
+        },
     }
     
     panic!("Should've found the value and returned");
