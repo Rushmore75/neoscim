@@ -127,21 +127,46 @@ fn scroll() {
     assert_eq!(app.screen.scroll.1, 0);
 
     // at the edge of visible, but shouldn't scroll yet
-    app.screen.scroll_based_on_cursor_location((18,0), &app.vars);
+    app.screen.scroll_based_on_cursor_location((16,0), &app.vars);
     assert_eq!(app.screen.scroll.0, 0);
     assert_eq!(app.screen.scroll.1, 0);
 
     // scroll 1 right
-    app.screen.scroll_based_on_cursor_location((19,0), &app.vars);
+    // Yes, you would think this shouldn't scroll yet `floor(181/10) = 18`
+    // but for some reason we are missing 2 cells in each direction.
+    app.screen.scroll_based_on_cursor_location((17,0), &app.vars);
     assert_eq!(app.screen.scroll.0, 1);
     assert_eq!(app.screen.scroll.1, 0);
 
     // cursor comes back, scroll should stay
-    app.screen.scroll_based_on_cursor_location((18,0), &app.vars);
+    app.screen.scroll_based_on_cursor_location((16,0), &app.vars);
     assert_eq!(app.screen.scroll.0, 1);
     assert_eq!(app.screen.scroll.1, 0);
 
     // scroll left 
+    app.screen.scroll_based_on_cursor_location((0,0), &app.vars);
+    assert_eq!(app.screen.scroll.0, 0);
+    assert_eq!(app.screen.scroll.1, 0);
+
+    // now for y
+
+    // we aren't scrolled at all yet
+    app.screen.scroll_based_on_cursor_location((0,0), &app.vars);
+    assert_eq!(app.screen.scroll.0, 0);
+    assert_eq!(app.screen.scroll.1, 0);
+
+    app.screen.scroll_based_on_cursor_location((0,12), &app.vars);
+    assert_eq!(app.screen.scroll.0, 0);
+    assert_eq!(app.screen.scroll.1, 0);
+
+    app.screen.scroll_based_on_cursor_location((0,13), &app.vars);
+    assert_eq!(app.screen.scroll.0, 0);
+    assert_eq!(app.screen.scroll.1, 1);
+
+    app.screen.scroll_based_on_cursor_location((0,12), &app.vars);
+    assert_eq!(app.screen.scroll.0, 0);
+    assert_eq!(app.screen.scroll.1, 1);
+
     app.screen.scroll_based_on_cursor_location((0,0), &app.vars);
     assert_eq!(app.screen.scroll.0, 0);
     assert_eq!(app.screen.scroll.1, 0);
