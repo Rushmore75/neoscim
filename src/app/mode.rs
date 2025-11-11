@@ -110,6 +110,12 @@ impl Mode {
             }
             Mode::Chord(chord) => {
                 chord.add_char(key);
+
+                if chord.buf[0] == ':' {
+                    app.mode = Mode::Command(Chord::new(':'));
+                    return;
+                }
+
                 match chord.as_string()[0..chord.as_string().len() - 1].parse::<usize>() {
                     // For chords that can take a numeric input
                     Ok(num) => match key {
