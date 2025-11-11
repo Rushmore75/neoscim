@@ -64,8 +64,7 @@ impl Mode {
 
     pub fn process_key(app: &mut App, key: char) {
         match &mut app.mode {
-            // FIXME this will break visual movement
-            Mode::Normal => {
+            Mode::Normal | Mode::Visual(_) => {
                 match key {
                     // <
                     'h' => {
@@ -108,6 +107,9 @@ impl Mode {
                     ':' => app.mode = Mode::Command(Chord::new(':')),
                     // loose chars will put you into chord mode
                     c => app.mode = Mode::Chord(Chord::new(c)),
+                }
+                if let Mode::Visual(v) = app.mode {
+                    // TODO visual delete, copy, paste, etc
                 }
             }
             Mode::Chord(chord) => {

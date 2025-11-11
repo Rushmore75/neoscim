@@ -1,8 +1,18 @@
 use std::{io, path::PathBuf};
 
-use ratatui::{DefaultTerminal, Frame, crossterm::event, layout::{self, Constraint, Layout, Rect}, prelude, style::{Color, Modifier, Style}, widgets::{Paragraph, Widget}};
+use ratatui::{
+    DefaultTerminal, Frame,
+    crossterm::event,
+    layout::{self, Constraint, Layout, Rect},
+    prelude,
+    style::{Color, Modifier, Style},
+    widgets::{Paragraph, Widget},
+};
 
-use crate::app::{calc::{Grid, LEN}, mode::Mode};
+use crate::app::{
+    calc::{Grid, LEN},
+    mode::Mode,
+};
 
 pub struct App {
     pub exit: bool,
@@ -18,16 +28,8 @@ impl Widget for &App {
         let cell_height = 1;
         let cell_length = 10;
 
-        let x_max = if area.width / cell_length > len {
-            len - 1
-        } else {
-            area.width / cell_length
-        };
-        let y_max = if area.height / cell_height > len {
-            len - 1
-        } else {
-            area.height / cell_height
-        };
+        let x_max = if area.width / cell_length > len { len - 1 } else { area.width / cell_length };
+        let y_max = if area.height / cell_height > len { len - 1 } else { area.height / cell_height };
 
         let is_selected = |x: usize, y: usize| -> bool {
             if let Mode::Visual((mut x1, mut y1)) = self.mode {
@@ -37,14 +39,13 @@ impl Widget for &App {
                 x2 += 1;
                 y2 += 1;
 
-                if x >= x1 && x <= x2{
+                if (x >= x1 && x <= x2) || (x >= x2 && x <= x1) {
                     // in-between the Xs
-                    if y >= y1 && y <= y2 {
+                    if (y >= y1 && y <= y2) || (y >= y2 && y <= y1) {
                         // in-between the Ys
-                        return true
+                        return true;
                     }
                 }
-
             }
             false
         };
@@ -54,69 +55,80 @@ impl Widget for &App {
                 let mut display = String::new();
                 let mut style = Style::new().fg(Color::White);
 
-                if is_selected(x.into(),y.into()) {
+                // Minus 1 because of header cells,
+                // the grid is shifted over (1,1), so if you need
+                // to index the grid, these are you values.
+                let mut x_idx: usize = 0;
+                let mut y_idx: usize = 0;
+                if y != 0 {
+                    y_idx = y as usize - 1;
+                }
+                if x != 0 {
+                    x_idx = x as usize - 1;
+                }
+
+                if is_selected(x.into(), y.into()) {
                     style = style.fg(Color::LightMagenta).bg(Color::Blue);
                 }
 
                 const ORANGE1: Color = Color::Rgb(200, 160, 0);
                 const ORANGE2: Color = Color::Rgb(180, 130, 0);
 
-
                 match (x == 0, y == 0) {
                     (true, true) => {
-                        let (x,y) = self.grid.selected_cell;
+                        let (x, y) = self.grid.selected_cell;
                         let c = Grid::num_to_char(x);
-                        display = format!("{y}{c}", );
+                        display = format!("{y}{c}",);
                         style = Style::new().fg(Color::Green).bg(Color::Black);
-                    },
+                    }
                     (true, false) => {
                         // row names
-                        display = y.to_string();
-                        
-                        let bg = if y%2==0 {
+                        display = y_idx.to_string();
+
+                        let bg = if y_idx == self.grid.selected_cell.1 {
+                            Color::DarkGray
+                        } else if y_idx % 2 == 0 {
                             ORANGE1
                         } else {
                             ORANGE2
                         };
                         style = Style::new().fg(Color::White).bg(bg);
-
-                    },
+                    }
                     (false, true) => {
                         // column names
-                        display = Grid::num_to_char(x as usize -1);
+                        display = Grid::num_to_char(x_idx);
 
-                        let bg = if x%2==0 {
+                        let bg = if x_idx == self.grid.selected_cell.0 {
+                            Color::DarkGray
+                        } else if x_idx % 2 == 0 {
                             ORANGE1
                         } else {
                             ORANGE2
                         };
- 
-                        style = Style::new().fg(Color::White).bg(bg)
-                    },
-                    (false, false) => {
-                        // minus 1 because of header cells
-                        let x_idx = x as usize -1;
-                        let y_idx = y as usize -1;
 
+                        style = Style::new().fg(Color::White).bg(bg)
+                    }
+                    (false, false) => {
                         if let Some(cell) = self.grid.get_cell_raw(x_idx, y_idx) {
                             display = cell.as_raw_string();
 
                             if cell.can_be_number() {
                                 if let Some(val) = self.grid.evaluate(&cell.as_raw_string()) {
                                     display = val.to_string();
-                                    style = Style::new().underline_color(Color::DarkGray).add_modifier(Modifier::UNDERLINED);
+                                    style = Style::new()
+                                        .underline_color(Color::DarkGray)
+                                        .add_modifier(Modifier::UNDERLINED);
                                 } else {
                                     // broken formulas
                                     if cell.is_equation() {
-                                        style = Style::new().underline_color(Color::Red).add_modifier(Modifier::UNDERLINED)
+                                        style =
+                                            Style::new().underline_color(Color::Red).add_modifier(Modifier::UNDERLINED)
                                     }
                                 }
                             }
                         }
                         if (x_idx, y_idx) == self.grid.selected_cell {
-                            style = Style::new()
-                                .fg(Color::Black)
-                                .bg(Color::White);
+                            style = Style::new().fg(Color::Black).bg(Color::White);
                             // modify the style of the cell you are editing
                             if let Mode::Insert(_) = self.mode {
                                 style = style.add_modifier(Modifier::ITALIC).add_modifier(Modifier::BOLD);
@@ -125,12 +137,7 @@ impl Widget for &App {
                     }
                 }
 
-                let area = Rect::new(
-                    area.x + (x * cell_length),
-                    area.y + (y * cell_height),
-                    cell_length,
-                    cell_height,
-                );
+                let area = Rect::new(area.x + (x * cell_length), area.y + (y * cell_height), cell_length, cell_height);
 
                 Paragraph::new(display).style(style).render(area, buf);
             }
@@ -159,10 +166,7 @@ impl App {
     fn draw(&self, frame: &mut Frame) {
         let layout = Layout::default()
             .direction(layout::Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Min(1),
-            ])
+            .constraints([Constraint::Length(1), Constraint::Min(1)])
             .split(frame.area());
 
         let cmd_line = layout[0];
@@ -170,10 +174,7 @@ impl App {
 
         let bottom_split = Layout::default()
             .direction(layout::Direction::Horizontal)
-            .constraints([
-                Constraint::Min(30),
-                Constraint::Min(100),
-            ])
+            .constraints([Constraint::Min(30), Constraint::Min(100)])
             .split(cmd_line);
 
         let cmd_line_left = bottom_split[0];
