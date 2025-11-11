@@ -4,7 +4,7 @@ use evalexpr::*;
 
 use crate::app::ctx;
 
-pub const LEN: usize = 100;
+pub const LEN: usize = 1000;
 
 pub struct Grid {
     //  a b c ...

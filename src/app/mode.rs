@@ -4,9 +4,7 @@ use std::{
 };
 
 use ratatui::{
-    prelude,
-    style::{Color, Style},
-    widgets::{Paragraph, Widget},
+    layout::Rect, prelude, style::{Color, Style}, widgets::{Paragraph, Widget}
 };
 
 use crate::app::{app::App, calc::LEN, error_msg::ErrorMessage};

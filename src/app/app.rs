@@ -12,7 +12,7 @@ use ratatui::{
 use crate::app::{
     calc::{Grid, LEN},
     error_msg::ErrorMessage,
-    mode::{Chord, Mode},
+    mode::{Chord, Mode}, screen::ScreenSpace,
 };
 
 pub struct App {
@@ -22,28 +22,13 @@ pub struct App {
     pub file: Option<PathBuf>,
     pub error_msg: ErrorMessage,
     pub vars: HashMap<String, String>,
+    pub screen: ScreenSpace,
 }
 
 impl Widget for &App {
     fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
-        let len = LEN as u16;
 
-        let mut cell_height = 1;
-        let mut cell_length = 10;
-
-        if let Some(h) = self.vars.get("height") {
-            if let Ok(p) = h.parse::<u16>() {
-                cell_height = p;
-            }
-        }
-        if let Some(l) = self.vars.get("length") {
-            if let Ok(p) = l.parse::<u16>() {
-                cell_length = p;
-            }
-        }
-
-        let x_max = if area.width / cell_length > len { len - 1 } else { area.width / cell_length };
-        let y_max = if area.height / cell_height > len { len - 1 } else { area.height / cell_height };
+        let (x_max, y_max) = self.screen.how_many_cells_fit_in(&area, &self.vars);
 
         let is_selected = |x: usize, y: usize| -> bool {
             if let Mode::Visual((mut x1, mut y1)) = self.mode {
@@ -74,11 +59,11 @@ impl Widget for &App {
                 // to index the grid, these are you values.
                 let mut x_idx: usize = 0;
                 let mut y_idx: usize = 0;
-                if y != 0 {
-                    y_idx = y as usize - 1;
-                }
                 if x != 0 {
-                    x_idx = x as usize - 1;
+                    x_idx = x as usize - 1 + self.screen.scroll_x();
+                }
+                if y != 0 {
+                    y_idx = y as usize - 1 + self.screen.y();
                 }
 
                 if is_selected(x.into(), y.into()) {
@@ -136,8 +121,10 @@ impl Widget for &App {
                                     } else {
                                         // the formula is broken
                                         display = e.to_owned();
-                                        style =
-                                            Style::new().fg(Color::Red).underline_color(Color::Red).add_modifier(Modifier::UNDERLINED)
+                                        style = Style::new()
+                                            .fg(Color::Red)
+                                            .underline_color(Color::Red)
+                                            .add_modifier(Modifier::UNDERLINED)
                                     }
                                 }
                             }
@@ -151,8 +138,14 @@ impl Widget for &App {
                         }
                     }
                 }
-
-                let area = Rect::new(area.x + (x * cell_length), area.y + (y * cell_height), cell_length, cell_height);
+                let w = self.screen.get_cell_width(&self.vars) as u16;
+                let h = self.screen.get_cell_height(&self.vars) as u16;
+                let area = Rect::new(
+                    area.x + (x * w),
+                    area.y + (y * h),
+                    w,
+                    h,
+                );
 
                 Paragraph::new(display).style(style).render(area, buf);
             }
@@ -169,6 +162,7 @@ impl App {
             file: None,
             error_msg: ErrorMessage::none(),
             vars: HashMap::new(),
+            screen: ScreenSpace::new(),
         }
     }
 
@@ -218,9 +212,22 @@ impl App {
 
         frame.render_widget(self, body);
         frame.render_widget(&self.error_msg, cmd_line_right);
+        #[cfg(debug_assertions)]
+        frame.render_widget(Paragraph::new(format!("x/w y/h: cursor{:?} scroll({}, {}) cell({}, {}) screen({}, {})",
+            self.grid.selected_cell,
+            self.screen.scroll_x(),
+            self.screen.y(),
+            self.screen.get_cell_width(&self.vars),
+            self.screen.get_cell_height(&self.vars),
+            body.width,
+            body.height,
+        )), cmd_line_right);
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
+        // make sure cursor is inside window
+        self.screen.scroll_based_on_cursor_location(self.grid.selected_cell, &self.vars);
+
         match &mut self.mode {
             Mode::Chord(chord) => match event::read()? {
                 event::Event::Key(key) => match key.code {
