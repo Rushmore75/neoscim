@@ -7,7 +7,7 @@ use ratatui::{
 use crate::app::{app::App, calc::LEN, error_msg::ErrorMessage};
 
 pub enum Mode {
-    Insert(Editor),
+    Insert(Chord),
     Chord(Chord),
     Normal,
     Command(Chord),
@@ -44,15 +44,28 @@ impl Mode {
     pub fn process_cmd(app: &mut App) {
         if let Mode::Command(editor) = &mut app.mode {
             // [':', 'q']
-            match editor.as_string().as_bytes()[1] as char {
-                'w' => {
+            let cmd = &editor.as_string()[1..];
+            let args = cmd.split_ascii_whitespace().collect::<Vec<&str>>();
+            // we are guaranteed at least 1 arg
+            if args.is_empty() {
+                return
+            }
+
+            match args[0] {
+                "w" => {
                     if let Some(file) = &app.file {
                         unimplemented!("Figure out how we want to save Grid to a csv or something")
                     } else {
+                        if let Some(arg) = args.get(1) {
+                            unimplemented!("Saving a file")
+                        }
                         app.error_msg = ErrorMessage::new("No file selected");
                     }
                 }
-                'q' => app.exit = true,
+                "q" => app.exit = true,
+                "set" => {
+                    // TODO solve issue #8
+                }
                 _ => {}
             }
         }
@@ -87,13 +100,13 @@ impl Mode {
                         return;
                     }
                     // edit cell
-                    'i' | 'a' => {
+                    'i' | 'a' | 'r' => {
                         let (x, y) = app.grid.selected_cell;
 
                         let val =
                             app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or(String::new());
 
-                        app.mode = Mode::Insert(Editor::new(val, (x, y)));
+                        app.mode = Mode::Insert(Chord::from(val));
                     }
                     'I' => { /* insert col before */ }
                     'A' => { /* insert col after */ }
@@ -152,31 +165,15 @@ impl Mode {
     }
 }
 
-pub struct Editor {
-    pub buf: String,
-    cursor: usize,
-    pub location: (usize, usize),
-}
-
-impl Editor {
-    fn new(value: String, loc: (usize, usize)) -> Self {
-        Self {
-            buf: value.to_string(),
-            cursor: value.len(),
-            location: loc,
-        }
-    }
-}
-
-impl Widget for &Editor {
-    fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
-        // TODO add visual cursor
-        Paragraph::new(self.buf.clone()).render(area, buf);
-    }
-}
-
 pub struct Chord {
     buf: Vec<char>,
+}
+
+impl From<String> for Chord {
+    fn from(value: String) -> Self {
+        let b= value.as_bytes().iter().map(|f| *f as char).collect();
+        Chord { buf: b }
+    }
 }
 
 impl Chord {

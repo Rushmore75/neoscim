@@ -12,7 +12,7 @@ use ratatui::{
 use crate::app::{
     calc::{Grid, LEN},
     error_msg::ErrorMessage,
-    mode::Mode,
+    mode::{Chord, Mode},
 };
 
 pub struct App {
@@ -229,21 +229,21 @@ impl App {
                         self.mode = Mode::Normal;
                     }
                     event::KeyCode::Enter => {
-                        let v = editor.buf.trim().to_string();
+                        let v = editor.as_string();
 
                         if let Ok(v) = v.parse::<f64>() {
-                            self.grid.set_cell_raw(editor.location, v);
+                            self.grid.set_cell_raw(self.grid.selected_cell, v);
                         } else {
-                            self.grid.set_cell_raw(editor.location, v);
+                            self.grid.set_cell_raw(self.grid.selected_cell, v);
                         }
 
                         self.mode = Mode::Normal;
                     }
                     event::KeyCode::Backspace => {
-                        editor.buf.pop();
+                        editor.backspace();
                     }
                     event::KeyCode::Char(c) => {
-                        editor.buf += &c.to_string();
+                        editor.add_char(c);
                     }
                     _ => {}
                 },
@@ -294,4 +294,15 @@ impl App {
 
         Ok(())
     }
+}
+
+#[test]
+fn test_quit_cmd() {
+    let mut app = App::new();
+    assert!(!app.exit);
+
+    app.mode = Mode::Command(Chord::from(":q".to_string()));
+    Mode::process_cmd(&mut app);
+
+    assert!(app.exit);
 }
