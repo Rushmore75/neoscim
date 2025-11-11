@@ -42,8 +42,6 @@ impl Widget for &App {
             }
         }
 
-
-
         let x_max = if area.width / cell_length > len { len - 1 } else { area.width / cell_length };
         let y_max = if area.height / cell_height > len { len - 1 } else { area.height / cell_height };
 
@@ -91,7 +89,7 @@ impl Widget for &App {
                 const ORANGE2: Color = Color::Rgb(180, 130, 0);
 
                 match (x == 0, y == 0) {
-                    // 0,0 dead space
+                    // 0,0 vi mode
                     (true, true) => {
                         display = self.mode.to_string();
                         style = self.mode.get_style();

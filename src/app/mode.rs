@@ -1,7 +1,12 @@
-use std::{cmp::{max, min}, fmt::Display};
+use std::{
+    cmp::{max, min},
+    fmt::Display,
+};
 
 use ratatui::{
-    prelude, style::{Color, Style}, widgets::{Paragraph, Widget}
+    prelude,
+    style::{Color, Style},
+    widgets::{Paragraph, Widget},
 };
 
 use crate::app::{app::App, calc::LEN, error_msg::ErrorMessage};
@@ -27,7 +32,6 @@ impl Display for Mode {
 }
 
 impl Mode {
-
     pub fn get_style(&self) -> Style {
         match self {
             // Where you are typing
@@ -40,7 +44,6 @@ impl Mode {
         }
     }
 
-
     pub fn process_cmd(app: &mut App) {
         if let Mode::Command(editor) = &mut app.mode {
             // [':', 'q']
@@ -48,7 +51,7 @@ impl Mode {
             let args = cmd.split_ascii_whitespace().collect::<Vec<&str>>();
             // we are guaranteed at least 1 arg
             if args.is_empty() {
-                return
+                return;
             }
 
             match args[0] {
@@ -74,10 +77,8 @@ impl Mode {
                         let value = parts[1];
 
                         app.vars.insert(key.to_owned(), value.to_owned());
-
                     }
                     app.error_msg = ErrorMessage::new("set <key>=<value>")
-
                 }
                 _ => {}
             }
@@ -95,7 +96,7 @@ impl Mode {
                     }
                     // v
                     'j' => {
-                        app.grid.selected_cell.1 = min(app.grid.selected_cell.1.saturating_add(1), LEN);
+                        app.grid.selected_cell.1 = min(app.grid.selected_cell.1.saturating_add(1), LEN - 1);
                         return;
                     }
                     // ^
@@ -105,7 +106,7 @@ impl Mode {
                     }
                     // >
                     'l' => {
-                        app.grid.selected_cell.0 = min(app.grid.selected_cell.0.saturating_add(1), LEN);
+                        app.grid.selected_cell.0 = min(app.grid.selected_cell.0.saturating_add(1), LEN - 1);
                         return;
                     }
                     '0' => {
@@ -116,8 +117,7 @@ impl Mode {
                     'i' | 'a' | 'r' => {
                         let (x, y) = app.grid.selected_cell;
 
-                        let val =
-                            app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or(String::new());
+                        let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or(String::new());
 
                         app.mode = Mode::Insert(Chord::from(val));
                     }
@@ -128,10 +128,27 @@ impl Mode {
                     'v' => app.mode = Mode::Visual(app.grid.selected_cell),
                     ':' => app.mode = Mode::Command(Chord::new(':')),
                     // loose chars will put you into chord mode
-                    c => app.mode = Mode::Chord(Chord::new(c)),
+                    c => {
+                        if let Mode::Normal = app.mode {
+                            app.mode = Mode::Chord(Chord::new(c))
+                        }
+                    }
                 }
-                if let Mode::Visual(v) = app.mode {
-                    // TODO visual delete, copy, paste, etc
+                if let Mode::Visual((x1, y1)) = app.mode {
+                    // TODO visual copy, paste, etc
+                    let (x2, y2) = app.grid.selected_cell;
+
+                    let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
+                    let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
+
+                    if key == 'd' {
+                        for x in low_x..=hi_x {
+                            for y in low_y..=hi_y {
+                                app.grid.set_cell_raw((x, y), String::new());
+                            }
+                        }
+                        app.mode = Mode::Normal
+                    }
                 }
             }
             Mode::Chord(chord) => {
@@ -184,8 +201,10 @@ pub struct Chord {
 
 impl From<String> for Chord {
     fn from(value: String) -> Self {
-        let b= value.as_bytes().iter().map(|f| *f as char).collect();
-        Chord { buf: b }
+        let b = value.as_bytes().iter().map(|f| *f as char).collect();
+        Chord {
+            buf: b,
+        }
     }
 }
 

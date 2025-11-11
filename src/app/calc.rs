@@ -4,8 +4,7 @@ use evalexpr::*;
 
 use crate::app::ctx;
 
-// if this is very large at all it will overflow the stack
-pub const LEN: usize = 10;
+pub const LEN: usize = 100;
 
 pub struct Grid {
     //  a b c ...
