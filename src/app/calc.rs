@@ -275,7 +275,9 @@ fn fn_of_fn() {
 
         assert!(res.is_some());
         assert_eq!(res.unwrap(), 6.);
+        return;
     }
+    panic!("Cell not found");
 }
 
 #[test]
@@ -287,7 +289,9 @@ fn circular_reference_cells() {
     if let Some(cell) = grid.get_cell("A0") {
         let res = grid.evaluate(&cell.to_string());
         assert!(res.is_none());
+        return;
     }
+    panic!("Cell not found");
 }
 
 #[test]
@@ -305,5 +309,22 @@ fn fn_of_fn_one_shot() {
 
         assert!(res.is_some());
         assert_eq!(res.unwrap(), 9.);
+        return;
     }
+    panic!("Cell not found");
+}
+
+#[test]
+fn cell_ref_string() {
+    let mut grid = Grid::new();
+    grid.set_cell("A0", 2.);
+    grid.set_cell("B0", "=A0".to_string());
+
+    if let Some(cell) = grid.get_cell("A0") {
+        let res = grid.evaluate(&cell.to_string());
+
+        assert!(res.is_none());
+        return;
+    }
+    panic!("Cell not found");
 }

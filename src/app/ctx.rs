@@ -45,7 +45,7 @@ impl<'a> Context for CallbackContext<'a, DefaultNumericTypes> {
 
             match v {
                 super::calc::CellType::Number(n) => return Some(Value::Float(n.to_owned())),
-                super::calc::CellType::String(s) => unimplemented!("{s}"),
+                super::calc::CellType::String(_) => return None,
                 super::calc::CellType::Equation(eq) => {
                     if let Ok(mut depth) = self.eval_depth.write() {
                         *depth += 1;
