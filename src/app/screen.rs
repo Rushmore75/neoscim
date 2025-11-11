@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::RwLock};
+use std::{collections::HashMap, env::VarError, sync::RwLock};
 
-use ratatui::{layout::Rect, prelude};
+use ratatui::prelude;
 
-use crate::app::calc::LEN;
+use crate::app::{app::App, calc::LEN};
 
 pub struct ScreenSpace {
     /// This is measured in cells
@@ -23,14 +23,33 @@ impl ScreenSpace {
         }
     }
 
+    pub fn center_x(&mut self, (cursor_x, _): (usize, usize), vars: &HashMap<String, String>) {
+        if let Ok(screen_size) = self.last_seen_screen_size.read() {
+            let x_cells = (screen_size.0 / self.get_cell_width(vars) as usize) -2;
+            let x_center = self.scroll_x() + (x_cells/2);
+
+            let delta = (cursor_x as isize - x_center as isize);
+            self.scroll.0 = self.scroll.0.saturating_add_signed(delta);
+        }
+    }
+    pub fn center_y(&mut self, (_, cursor_y): (usize, usize), vars: &HashMap<String, String>) {
+        if let Ok(screen_size) = self.last_seen_screen_size.read() {
+            let y_cells = (screen_size.1 / self.get_cell_height(vars) as usize) -2;
+            let y_center = self.scroll_y() + (y_cells/2);
+
+            let delta = (cursor_y as isize - y_center as isize);
+            self.scroll.1 = self.scroll.1.saturating_add_signed(delta);
+        }
+    }
+
     pub fn scroll_based_on_cursor_location(&mut self, (cursor_x, cursor_y): (usize, usize), vars: &HashMap<String, String>) {
         if let Ok(screen_size) = self.last_seen_screen_size.read() {
             // ======= X =======
-            let x_cells = (screen_size.0) / self.get_cell_width(vars) as usize ;
-
-            let lower_x = self.scroll_x();
             // screen seems to be 2 cells smaller than it should be
-            let upper_x = self.scroll_x() + x_cells -2;
+            // this is probably related to issue #6
+            let x_cells = (screen_size.0 / self.get_cell_width(vars) as usize) -2;
+            let lower_x = self.scroll_x();
+            let upper_x = self.scroll_x() + x_cells;
 
             if cursor_x < lower_x {
                 let delta = lower_x - cursor_x;
@@ -42,11 +61,11 @@ impl ScreenSpace {
             }
 
             // ======= Y =======
-            let y_cells = screen_size.1 / self.get_cell_height(vars) as usize;
-
-            let lower_y = self.scroll_y();
             // screen seems to be 2 cells smaller than it should be
-            let upper_y = self.scroll_y() + y_cells -2;
+            // this is probably related to issue #6
+            let y_cells = (screen_size.1 / self.get_cell_height(vars) as usize) -2;
+            let lower_y = self.scroll_y();
+            let upper_y = self.scroll_y() + y_cells;
 
             if cursor_y < lower_y {
                 let delta = lower_y - cursor_y;
@@ -103,7 +122,7 @@ fn fit_cells() {
     app.vars.insert("length".to_string(), 10.to_string());
     app.vars.insert("height".to_string(), 1.to_string());
 
-    let (x,y) = app.screen.how_many_cells_fit_in(&Rect::new(0, 0, 181, 14), &app.vars);
+    let (x,y) = app.screen.how_many_cells_fit_in(&prelude::Rect::new(0, 0, 181, 14), &app.vars);
     assert_eq!(x, 18);
     assert_eq!(y, 14);
 }
@@ -117,7 +136,7 @@ fn scroll() {
 
     // We have to check how many cells fit, because screen learns the width
     // of the area by rumour here.
-    let (x,y) = app.screen.how_many_cells_fit_in(&Rect::new(0, 0, 181, 14), &app.vars);
+    let (x,y) = app.screen.how_many_cells_fit_in(&prelude::Rect::new(0, 0, 181, 14), &app.vars);
     assert_eq!(x, 18);
     assert_eq!(y, 14);
 

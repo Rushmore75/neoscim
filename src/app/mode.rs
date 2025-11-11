@@ -1,10 +1,10 @@
 use std::{
-    cmp::{max, min},
+    cmp::min,
     fmt::Display,
 };
 
 use ratatui::{
-    layout::Rect, prelude, style::{Color, Style}, widgets::{Paragraph, Widget}
+    prelude, style::{Color, Style}, widgets::{Paragraph, Widget}
 };
 
 use crate::app::{app::App, calc::LEN, error_msg::ErrorMessage};
@@ -152,11 +152,13 @@ impl Mode {
             Mode::Chord(chord) => {
                 chord.add_char(key);
 
+                // the chord starts with a :, send it over to be a comman
                 if chord.buf[0] == ':' {
                     app.mode = Mode::Command(Chord::new(':'));
                     return;
                 }
 
+                // Try and parse out a preceding number
                 match chord.as_string()[0..chord.as_string().len() - 1].parse::<usize>() {
                     // For chords that can take a numeric input
                     Ok(num) => match key {
@@ -182,6 +184,11 @@ impl Mode {
                         }
                         "gg" => {
                             app.grid.selected_cell.1 = 0;
+                            app.mode = Mode::Normal;
+                        }
+                        "zz" => {
+                            app.screen.center_x(app.grid.selected_cell, &app.vars);
+                            app.screen.center_y(app.grid.selected_cell, &app.vars);
                             app.mode = Mode::Normal;
                         }
                         _ => {}

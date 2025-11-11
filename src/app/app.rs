@@ -10,9 +10,9 @@ use ratatui::{
 };
 
 use crate::app::{
-    calc::{Grid, LEN},
+    calc::Grid,
     error_msg::ErrorMessage,
-    mode::{Chord, Mode}, screen::ScreenSpace,
+    mode::Mode, screen::ScreenSpace,
 };
 
 pub struct App {
@@ -321,7 +321,7 @@ fn test_quit_cmd() {
     let mut app = App::new();
     assert!(!app.exit);
 
-    app.mode = Mode::Command(Chord::from(":q".to_string()));
+    app.mode = Mode::Command(crate::app::mode::Chord::from(":q".to_string()));
     Mode::process_cmd(&mut app);
 
     assert!(app.exit);
