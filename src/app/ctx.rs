@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::RwLock};
 
 use evalexpr::{error::EvalexprResultValue, *};
 
@@ -6,6 +6,7 @@ use crate::app::calc::Grid;
 
 pub struct CallbackContext<'a, T: EvalexprNumericTypes = DefaultNumericTypes> {
     variables: &'a Grid,
+    eval_depth: RwLock<usize>,
     functions: HashMap<String, Function<T>>,
 
     /// True if builtin functions are disabled.
@@ -15,6 +16,7 @@ pub struct CallbackContext<'a, T: EvalexprNumericTypes = DefaultNumericTypes> {
 impl<'a, NumericTypes: EvalexprNumericTypes> CallbackContext<'a, NumericTypes> {
     pub fn new(grid: &'a Grid) -> Self {
         Self {
+            eval_depth: RwLock::new(0),
             variables: grid,
             functions: Default::default(),
             without_builtin_functions: false,
@@ -45,9 +47,32 @@ impl<'a> Context for CallbackContext<'a, DefaultNumericTypes> {
                 super::calc::CellType::Number(n) => return Some(Value::Float(n.to_owned())),
                 super::calc::CellType::String(s) => unimplemented!("{s}"),
                 super::calc::CellType::Equation(eq) => {
+                    if let Ok(mut depth) = self.eval_depth.write() {
+                        *depth += 1;
+                    }
+                    if let Ok(depth) = self.eval_depth.read() {
+                        if *depth > 10 {
+                            return None
+                        }                        
+                    } else {
+                        // It would be unsafe to continue to process without knowing how
+                        // deep we've gone.
+                        return None
+                    }
                     match eval_with_context(&eq[1..], self) {
                         Ok(e) => return Some(e),
-                        Err(e) => panic!("{e} \"{eq}\""),
+                        Err(e) => {
+                            match e {
+                                EvalexprError::VariableIdentifierNotFound(_) => {
+                                    // If the variable isn't found, that's ~~probably~~ because
+                                    // of recursive reference, considering all references
+                                    // are grabbed straight from the table.
+                                    return None
+                                },
+
+                               e => panic!("> Error {e}\n> Equation: '{eq}'"),
+                            }
+                        },
                     }
                 },
             }

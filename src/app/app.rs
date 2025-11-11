@@ -122,8 +122,10 @@ impl Widget for &App {
                                             .underline_color(Color::DarkGray)
                                             .add_modifier(Modifier::UNDERLINED);
                                     } else {
+                                        // the formula is broken
+                                        display = e.to_owned();
                                         style =
-                                            Style::new().underline_color(Color::Red).add_modifier(Modifier::UNDERLINED)
+                                            Style::new().fg(Color::Red).underline_color(Color::Red).add_modifier(Modifier::UNDERLINED)
                                     }
                                 }
                             }
