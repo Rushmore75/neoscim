@@ -1,12 +1,10 @@
 use std::fmt::Display;
 
 use ratatui::{
-    layout::Rect,
-    prelude,
-    widgets::{Paragraph, Widget},
+    layout::Rect, prelude, style::{Color, Modifier, Style}, widgets::{Paragraph, Widget}
 };
 
-use crate::app::{self, app::App};
+use crate::app::{app::App};
 
 pub enum Mode {
     Insert(Editor),
@@ -18,7 +16,19 @@ pub enum Mode {
 
 impl Widget for &Mode {
     fn render(self, area: Rect, buf: &mut prelude::Buffer) {
-        Paragraph::new(self.to_string()).render(area, buf);
+        let style = match self {
+            // Where you are typing - italic
+            Mode::Insert(_) => Style::new().fg(Color::Blue).add_modifier(Modifier::ITALIC),
+            Mode::Command(_) => Style::new().fg(Color::LightGreen).add_modifier(Modifier::ITALIC),
+            Mode::Chord(_) => Style::new().fg(Color::Blue).add_modifier(Modifier::ITALIC),
+            // Movement-based modes
+            Mode::Visual(_) => Style::new().fg(Color::Yellow),
+            Mode::Normal => Style::new().fg(Color::Green),
+        };
+
+        Paragraph::new(self.to_string())
+            .style(style)
+            .render(area, buf);
     }
 }
 
@@ -143,6 +153,7 @@ pub struct Editor {
     cursor: usize,
     pub location: (usize, usize),
 }
+
 impl Editor {
     fn new(value: String, loc: (usize, usize)) -> Self {
         Self {

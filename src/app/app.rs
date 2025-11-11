@@ -37,8 +37,6 @@ impl Widget for &App {
                 x2 += 1;
                 y2 += 1;
 
-
-
                 if x >= x1 && x <= x2{
                     // in-between the Xs
                     if y >= y1 && y <= y2 {
@@ -172,7 +170,10 @@ impl App {
 
         let bottom_split = Layout::default()
             .direction(layout::Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([
+                Constraint::Min(30),
+                Constraint::Min(100),
+            ])
             .split(cmd_line);
 
         let cmd_line_left = bottom_split[0];
