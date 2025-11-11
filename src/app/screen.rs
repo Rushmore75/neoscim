@@ -25,27 +25,45 @@ impl ScreenSpace {
 
     pub fn scroll_based_on_cursor_location(&mut self, (cursor_x, cursor_y): (usize, usize), vars: &HashMap<String, String>) {
         if let Ok(screen_size) = self.last_seen_screen_size.read() {
-            
-            // screen seems to be 2 cells smaller than it should be
-            let x_cells = (screen_size.0 / self.get_cell_width(vars) as usize)-2;
+            // ======= X =======
+            let x_cells = (screen_size.0) / self.get_cell_width(vars) as usize ;
 
             let lower_x = self.scroll_x();
-            let upper_x = self.scroll_x() + x_cells;
+            // screen seems to be 2 cells smaller than it should be
+            let upper_x = self.scroll_x() + x_cells -2;
 
-            if cursor_x<=lower_x {
-                self.scroll.0 = self.scroll.0.saturating_sub(1);
+            if cursor_x < lower_x {
+                let delta = lower_x - cursor_x;
+                self.scroll.0 = self.scroll.0.saturating_sub(delta);
             }
             if cursor_x > upper_x {
-                self.scroll.0 = self.scroll.0.saturating_add(1);
+                let delta = cursor_x - upper_x;
+                self.scroll.0 = self.scroll.0.saturating_add(delta);
             }
 
+            // ======= Y =======
+            let y_cells = screen_size.1 / self.get_cell_height(vars) as usize;
+
+            let lower_y = self.scroll_y();
+            // screen seems to be 2 cells smaller than it should be
+            let upper_y = self.scroll_y() + y_cells -2;
+
+            if cursor_y < lower_y {
+                let delta = lower_y - cursor_y;
+                self.scroll.1 = self.scroll.1.saturating_sub(delta);
+            }
+
+            if cursor_y > upper_y {
+                let delta = cursor_y - upper_y;
+                self.scroll.1 = self.scroll.1.saturating_add(delta);
+            }
         }
     }
 
     pub fn scroll_x(&self) -> usize {
         self.scroll.0
     }
-    pub fn y(&self) -> usize{
+    pub fn scroll_y(&self) -> usize{
         self.scroll.1
     }
     pub fn get_cell_height(&self, vars: &HashMap<String, String>) -> usize {
@@ -78,3 +96,54 @@ impl ScreenSpace {
     }
 }
 
+#[test]
+fn fit_cells() {
+    use crate::App;
+    let mut app = App::new();
+    app.vars.insert("length".to_string(), 10.to_string());
+    app.vars.insert("height".to_string(), 1.to_string());
+
+    let (x,y) = app.screen.how_many_cells_fit_in(&Rect::new(0, 0, 181, 14), &app.vars);
+    assert_eq!(x, 18);
+    assert_eq!(y, 14);
+}
+
+#[test]
+fn scroll() {
+    use crate::App;
+    let mut app = App::new();
+    app.vars.insert("length".to_string(), 10.to_string());
+    app.vars.insert("height".to_string(), 1.to_string());
+
+    // We have to check how many cells fit, because screen learns the width
+    // of the area by rumour here.
+    let (x,y) = app.screen.how_many_cells_fit_in(&Rect::new(0, 0, 181, 14), &app.vars);
+    assert_eq!(x, 18);
+    assert_eq!(y, 14);
+
+    // we aren't scrolled at all yet
+    app.screen.scroll_based_on_cursor_location((0,0), &app.vars);
+    assert_eq!(app.screen.scroll.0, 0);
+    assert_eq!(app.screen.scroll.1, 0);
+
+    // at the edge of visible, but shouldn't scroll yet
+    app.screen.scroll_based_on_cursor_location((18,0), &app.vars);
+    assert_eq!(app.screen.scroll.0, 0);
+    assert_eq!(app.screen.scroll.1, 0);
+
+    // scroll 1 right
+    app.screen.scroll_based_on_cursor_location((19,0), &app.vars);
+    assert_eq!(app.screen.scroll.0, 1);
+    assert_eq!(app.screen.scroll.1, 0);
+
+    // cursor comes back, scroll should stay
+    app.screen.scroll_based_on_cursor_location((18,0), &app.vars);
+    assert_eq!(app.screen.scroll.0, 1);
+    assert_eq!(app.screen.scroll.1, 0);
+
+    // scroll left 
+    app.screen.scroll_based_on_cursor_location((0,0), &app.vars);
+    assert_eq!(app.screen.scroll.0, 0);
+    assert_eq!(app.screen.scroll.1, 0);
+
+}

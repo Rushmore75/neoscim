@@ -63,7 +63,7 @@ impl Widget for &App {
                     x_idx = x as usize - 1 + self.screen.scroll_x();
                 }
                 if y != 0 {
-                    y_idx = y as usize - 1 + self.screen.y();
+                    y_idx = y as usize - 1 + self.screen.scroll_y();
                 }
 
                 if is_selected(x.into(), y.into()) {
@@ -216,7 +216,7 @@ impl App {
         frame.render_widget(Paragraph::new(format!("x/w y/h: cursor{:?} scroll({}, {}) cell({}, {}) screen({}, {})",
             self.grid.selected_cell,
             self.screen.scroll_x(),
-            self.screen.y(),
+            self.screen.scroll_y(),
             self.screen.get_cell_width(&self.vars),
             self.screen.get_cell_height(&self.vars),
             body.width,
@@ -225,9 +225,6 @@ impl App {
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        // make sure cursor is inside window
-        self.screen.scroll_based_on_cursor_location(self.grid.selected_cell, &self.vars);
-
         match &mut self.mode {
             Mode::Chord(chord) => match event::read()? {
                 event::Event::Key(key) => match key.code {
@@ -311,6 +308,9 @@ impl App {
                 _ => {}
             },
         }
+
+        // make sure cursor is inside window
+        self.screen.scroll_based_on_cursor_location(self.grid.selected_cell, &self.vars);
 
         Ok(())
     }
