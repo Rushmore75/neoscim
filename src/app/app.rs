@@ -10,9 +10,7 @@ use ratatui::{
 };
 
 use crate::app::{
-    calc::Grid,
-    error_msg::ErrorMessage,
-    mode::Mode, screen::ScreenSpace,
+    error_msg::ErrorMessage, logic::calc::{CellType, Grid}, mode::Mode, screen::ScreenSpace
 };
 
 pub struct App {
@@ -110,9 +108,9 @@ impl Widget for &App {
                     (false, false) => {
                         if let Some(cell) = self.grid.get_cell_raw(x_idx, y_idx) {
                             match cell {
-                                crate::app::calc::CellType::Number(c) => display = c.to_string(),
-                                crate::app::calc::CellType::String(s) => display = s.to_owned(),
-                                crate::app::calc::CellType::Equation(e) => {
+                                CellType::Number(c) => display = c.to_string(),
+                                CellType::String(s) => display = s.to_owned(),
+                                CellType::Equation(e) => {
                                     if let Some(val) = self.grid.evaluate(e) {
                                         display = val.to_string();
                                         style = Style::new()

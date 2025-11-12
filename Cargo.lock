@@ -134,7 +134,6 @@ dependencies = [
 [[package]]
 name = "evalexpr"
 version = "13.0.0"
-source = "git+https://github.com/Rushmore75/evalexpr.git#cb0f504884ee4e70e682a90d6b231c9917b84f4c"
 
 [[package]]
 name = "fnv"

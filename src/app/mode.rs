@@ -7,7 +7,7 @@ use ratatui::{
     prelude, style::{Color, Style}, widgets::{Paragraph, Widget}
 };
 
-use crate::app::{app::App, calc::LEN, error_msg::ErrorMessage};
+use crate::app::{app::App, logic::calc::LEN, error_msg::ErrorMessage};
 
 pub enum Mode {
     Insert(Chord),

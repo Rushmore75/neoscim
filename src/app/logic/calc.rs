@@ -2,9 +2,10 @@ use std::fmt::Display;
 
 use evalexpr::*;
 
-use crate::app::ctx;
+use crate::app::logic::ctx;
 
 pub const LEN: usize = 1000;
+
 
 pub struct Grid {
     //  a b c ...
@@ -42,6 +43,8 @@ impl Grid {
         }
     }
 
+    /// Only evaluates equations, such as `=10` or `=A1/C2` not,
+    /// strings or numbers.
     pub fn evaluate(&self, mut eq: &str) -> Option<f64> {
         if eq.starts_with('=') {
             eq = &eq[1..];
@@ -54,8 +57,16 @@ impl Grid {
 
         match eval_with_context(eq, &ctx) {
             Ok(e) => {
-                let val = e.as_float().expect("Should be float");
-                return Some(val);
+                if e.is_number() {
+                    if e.is_float() {
+                        let val = e.as_float().expect("Value lied about being a float");
+                        return Some(val);
+                    } else if e.is_int() {
+                        let i = e.as_int().expect("Value lied about being an int");
+                        return Some(i as f64)
+                    }
+                }
+                return None
             }
             Err(e) => match e {
                 EvalexprError::VariableIdentifierNotFound(_e) => {
@@ -67,7 +78,9 @@ impl Grid {
         }
     }
 
-    fn parse_to_idx(i: &str) -> (usize, usize) {
+    /// Parse values in the format of A0, C10 ZZ99, etc, and
+    /// turn them into an X,Y index.
+    fn parse_to_idx(i: &str) -> Option<(usize, usize)> {
         let chars = i
             .chars()
             .take_while(|c| c.is_alphabetic())
@@ -82,20 +95,25 @@ impl Grid {
         let x_idx = chars
             .iter()
             .enumerate()
-            .map(Self::char_to_idx)
+            .map(|(idx, c)| {
+                // convert to numbers
+                (c.to_ascii_lowercase() as usize - 97) + (26 * idx)
+            })
             .fold(0, |a, b| a + b);
 
         // get the y index from the numbers
-        let y_idx = nums
-            .parse::<usize>()
-            .expect("Got non-number character after sorting for just numeric characters");
+        if let Ok(y_idx) = nums.parse::<usize>() {
+            return Some((x_idx, y_idx));
+        } else {
+            return None
+        }
 
-        (x_idx, y_idx)
     }
 
     pub fn set_cell<T: Into<CellType>>(&mut self, cell_id: &str, val: T) {
-        let loc = Self::parse_to_idx(cell_id);
-        self.set_cell_raw(loc, val);
+        if let Some(loc) = Self::parse_to_idx(cell_id) {
+            self.set_cell_raw(loc, val);
+        }
     }
 
     pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x,y): (usize, usize), val: T) {
@@ -108,8 +126,10 @@ impl Grid {
     /// F0,
     /// etc
     pub fn get_cell(&self, cell_id: &str) -> &Option<CellType> {
-        let (x, y) = Self::parse_to_idx(cell_id);
-        self.get_cell_raw(x, y)
+        if let Some((x, y)) = Self::parse_to_idx(cell_id) {
+            return self.get_cell_raw(x, y)
+        }
+        &None
     }
 
     pub fn get_cell_raw(&self, x: usize, y: usize) -> &Option<CellType> {
@@ -117,11 +137,6 @@ impl Grid {
             return &None
         }
         &self.cells[x][y]
-    }
-
-    // this function has unit tests
-    fn char_to_idx((idx, c): (usize, &char)) -> usize {
-        (c.to_ascii_lowercase() as usize - 97) + 26 * idx
     }
 
     pub fn num_to_char(idx: usize) -> String {
@@ -188,16 +203,15 @@ impl Display for CellType {
         let d = match self {
             CellType::Number(n) => n.to_string(),
             CellType::String(n) => n.to_owned(),
-            CellType::Equation(r) => {
-                r.to_owned()
-            },
+            CellType::Equation(r) => r.to_owned(),
         };
         write!(f, "{d}")
     }
 }
 
+// Do cells hold strings?
 #[test]
-fn test_cells() {
+fn cell_strings() {
     let mut grid = Grid::new();
 
     assert!(&grid.cells[0][0].is_none());
@@ -210,67 +224,64 @@ fn test_cells() {
     );
 }
 
+// Testing if A0 -> 0,0 and if 0,0 -> A0
 #[test]
-fn c_to_i() {
-    assert_eq!(Grid::char_to_idx((0, &'a')), 0);
-    assert_eq!(Grid::char_to_idx((0, &'A')), 0);
-    assert_eq!(Grid::char_to_idx((0, &'z')), 25);
-    assert_eq!(Grid::char_to_idx((0, &'Z')), 25);
-    assert_eq!(Grid::char_to_idx((1, &'a')), 26);
-
-    assert_eq!(Grid::parse_to_idx("A0"), (0, 0));
-    assert_eq!(Grid::parse_to_idx("AA0"), (26, 0));
-    assert_eq!(Grid::parse_to_idx("A1"), (0, 1));
-    assert_eq!(Grid::parse_to_idx("A10"), (0, 10));
-    assert_eq!(Grid::parse_to_idx("Aa10"), (26, 10));
-}
-
-#[test]
-fn i_to_c() {
+fn alphanumeric_indexing() {
+    assert_eq!(Grid::parse_to_idx("A0"), Some((0, 0)));
+    assert_eq!(Grid::parse_to_idx("AA0"), Some((26, 0)));
+    assert_eq!(Grid::parse_to_idx("A1"), Some((0, 1)));
+    assert_eq!(Grid::parse_to_idx("A10"), Some((0, 10)));
+    assert_eq!(Grid::parse_to_idx("Aa10"), Some((26, 10)));
+    assert_eq!(Grid::parse_to_idx("invalid"), None);
+    
     assert_eq!(Grid::num_to_char(0).trim(), "A");
     assert_eq!(Grid::num_to_char(25).trim(), "Z");
     assert_eq!(Grid::num_to_char(26), "AA");
     assert_eq!(Grid::num_to_char(51), "AZ");
     assert_eq!(Grid::num_to_char(701), "ZZ");
+    // Larger than ZZ isn't implemented yet
 }
 
 #[test]
-fn test_math() {
-    use evalexpr::*;
-
+fn valid_equations() {
     let mut grid = Grid::new();
+
     grid.set_cell("A0", 2.);
     grid.set_cell("B0", 1.);
     grid.set_cell("C0", "=A0+B0".to_string());
 
-    assert_eq!(eval("1+2").unwrap(), Value::Int(3));
-    if let Some(cell) = grid.get_cell("C0") {
-        match cell {
-            CellType::Number(_) => todo!(),
-            CellType::String(_) => todo!(),
-            CellType::Equation(a) => {
-                let res = grid.evaluate(&a);
-                assert!(res.is_some());
-                assert_eq!(res.unwrap(), 3.);
-            },
-        }
-    }
+    // cell math
+    let cell = grid.get_cell("C0").as_ref().expect("Just set it");
+    let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
+    assert_eq!(res, 3.);
 
-    grid.set_cell("D0", "=50/60".to_string());
-    let c = grid.get_cell("D0").as_ref().expect("I just set this");
-    match c {
-        CellType::Number(_) => todo!(),
-        CellType::String(_) => todo!(),
-        CellType::Equation(e) => {
-            let res = grid.evaluate(e).expect("Should work");
-            assert_eq!(res, 0.83);
-            return;
-        },
-    }
-    
-    panic!("Should've found the value and returned");
+    // divide floats
+    grid.set_cell("D0", "=5./2.".to_string());
+    let cell = grid.get_cell("D0").as_ref().expect("I just set this");
+    let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
+    assert_eq!(res, 2.5); 
+
+    // Float / Int mix
+    grid.set_cell("D0", "=5./2".to_string());
+    let cell = grid.get_cell("D0").as_ref().expect("I just set this");
+    let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
+    assert_eq!(res, 2.5); 
+
+    // divide "ints" (should become floats)
+    grid.set_cell("D0", "=5/2".to_string());
+    let cell = grid.get_cell("D0").as_ref().expect("I just set this");
+    let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
+    assert_eq!(res, 2.5);
+
+    // Non-equation that should still be valid
+    grid.set_cell("D0", "=10".to_string());
+    let cell = grid.get_cell("D0").as_ref().expect("I just set this");
+    let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
+    assert_eq!(res, 10.);
 }
 
+// Cell = output of Cell = value of Cells.
+// Cell who's value depends on the output of another cell's equation.
 #[test]
 fn fn_of_fn() {
     let mut grid = Grid::new();
@@ -289,6 +300,7 @@ fn fn_of_fn() {
     panic!("Cell not found");
 }
 
+// Two cells that have a circular dependency to solve for a value
 #[test]
 fn circular_reference_cells() {
     let mut grid = Grid::new();
@@ -304,36 +316,20 @@ fn circular_reference_cells() {
 }
 
 #[test]
-fn fn_of_fn_one_shot() {
+fn invalid_equations() {
     let mut grid = Grid::new();
-    grid.set_cell("A0", 2.);
-    grid.set_cell("B0", 1.);
-    grid.set_cell("C0", "=A0+B0".to_string());
-    grid.set_cell("D0", "=C0*2".to_string());
 
-    grid.set_cell("E0", "=D0+C0".to_string());
+    // Test invalidly formatted equation
+    grid.set_cell("A0", "=invalid".to_string());
+    let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
+    let res = grid.evaluate(&cell.to_string());
+    assert!(res.is_none());
 
-    if let Some(cell) = grid.get_cell("E0") {
-        let res = grid.evaluate(&cell.to_string());
-
-        assert!(res.is_some());
-        assert_eq!(res.unwrap(), 9.);
-        return;
-    }
-    panic!("Cell not found");
-}
-
-#[test]
-fn cell_ref_string() {
-    let mut grid = Grid::new();
-    grid.set_cell("A0", 2.);
-    grid.set_cell("B0", "=A0".to_string());
-
-    if let Some(cell) = grid.get_cell("A0") {
-        let res = grid.evaluate(&cell.to_string());
-
-        assert!(res.is_none());
-        return;
-    }
-    panic!("Cell not found");
+    // Test an "equation" that's just 1 number
+    grid.set_cell("B0", "=10".to_string());
+    let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
+    let res = grid.evaluate(&cell.to_string());
+    assert!(res.is_some());
+    assert!(res.is_some_and(|v| v == 10.));
+    
 }

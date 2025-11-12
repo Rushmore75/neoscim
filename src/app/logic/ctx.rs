@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use evalexpr::{error::EvalexprResultValue, *};
 
-use crate::app::calc::Grid;
+use crate::app::logic::calc::Grid;
 
 pub struct CallbackContext<'a, T: EvalexprNumericTypes = DefaultNumericTypes> {
     variables: &'a Grid,
