@@ -2,7 +2,7 @@ use std::{
     fmt::Display,
     fs,
     io::{Read, Write},
-    path::PathBuf,
+    path::PathBuf, sync::RwLock,
 };
 
 use evalexpr::*;
@@ -81,7 +81,6 @@ impl Grid {
         self.dirty = false;
         Ok(())
     }
-
 
     #[must_use]
     pub fn max_y_at_x(&self, x: usize) -> usize {
@@ -315,8 +314,7 @@ impl Grid {
                         // FIXME this might be a dangerous recursion, as I don't think its bounded right now
                         return self.evaluate(&new_eq)
                     }
-                    // panic!("Will not be able to parse this equation, cell {e} not found")
-                    return Err(format!("{var_not_found} is not a variable"));
+                    return Err(format!("\"{var_not_found}\" is not a variable"));
                 }
                 EvalexprError::TypeError {
                     expected: e,
@@ -415,6 +413,7 @@ impl Default for Grid {
     }
 }
 
+#[derive(Debug)]
 pub enum CellType {
     Number(f64),
     String(String),
@@ -704,5 +703,25 @@ fn parse_csv() {
     // starting with a quote with a comma
     assert_eq!(Grid::parse_csv_line("\"\"\"hello, world\"\" is what she said\",1"), vec![Some("\"hello, world\" is what she said".to_string()), Some("1".to_string())]);
     
+}
+
+#[test]
+fn ranges() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", 2.);
+    grid.set_cell("A1", 1.);
+    grid.set_cell("B0", "=sum(A:A)".to_string());
+
+    let cell = grid.get_cell("B0").as_ref().expect("Just set it");
+    let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
+    assert_eq!(res, 3.);
+
+    grid.set_cell("B1", "=B0*2".to_string());
+
+    // cell math
+    let cell = grid.get_cell("B1").as_ref().expect("Just set it");
+    let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
+    assert_eq!(res, 6.);
 
 }

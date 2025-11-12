@@ -75,14 +75,17 @@ impl<'a> CallbackContext<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn clear_variables(&mut self) {
         ()
     }
 
+    #[allow(dead_code)]
     pub fn clear_functions(&mut self) {
-        self.functions.clear()
+        ()
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.clear_variables();
         self.clear_functions();
