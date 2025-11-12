@@ -82,6 +82,27 @@ impl Grid {
         Ok(())
     }
 
+
+    #[must_use]
+    pub fn max_y_at_x(&self, x: usize) -> usize {
+        let mut max_y = 0;
+        if let Some(col) = self.cells.get(x) {
+            // we could do fancy things like .take_while(not null) but then 
+            // we would have to deal with empty cells and stuff, which sounds
+            // boring. This will be fast "enough", considering the grid is
+            // probably only like 1k cells
+            for (yi, cell) in col.iter().enumerate() {
+                if cell.is_some() {
+                    if yi > max_y {
+                        max_y = yi
+                    }
+                }
+            }
+        }
+
+        max_y
+    }
+
     /// Iterate over the entire grid and see where
     /// the farthest modified cell is.
     #[must_use]
@@ -218,35 +239,84 @@ impl Grid {
         }
     }
 
-    /// Only evaluates equations, such as `=10` or `=A1/C2` not,
+    /// Only evaluates equations, such as `=10` or `=A1/C2`, not
     /// strings or numbers.
     pub fn evaluate(&self, mut eq: &str) -> Result<f64, String> {
+        let original_equation = eq;
+
         if eq.starts_with('=') {
             eq = &eq[1..];
         } else {
             // Should be evaluating an equation
-            return Err("not eq".to_string());
+            return Err(format!("\"{eq}\" is not an equation"));
         }
 
         let ctx = ctx::CallbackContext::new(&self);
 
+        let prep_for_return = |v: Value| {
+            if v.is_number() {
+                if v.is_float() {
+                    let val = v.as_float().expect("Value lied about being a float");
+                    return Ok(val);
+                } else if v.is_int() {
+                    let i = v.as_int().expect("Value lied about being an int");
+                    return Ok(i as f64);
+                }
+            }
+            return Err("Result is NaN".to_string());
+        };
+
         match eval_with_context(eq, &ctx) {
             Ok(e) => {
-                if e.is_number() {
-                    if e.is_float() {
-                        let val = e.as_float().expect("Value lied about being a float");
-                        return Ok(val);
-                    } else if e.is_int() {
-                        let i = e.as_int().expect("Value lied about being an int");
-                        return Ok(i as f64);
-                    }
-                }
-                return Err("Result is NaN".to_string());
+                return prep_for_return(e);
             }
             Err(e) => match e {
-                EvalexprError::VariableIdentifierNotFound(e) => {
+                EvalexprError::VariableIdentifierNotFound(var_not_found) => {
+                    // the identifier might be a range: A:A
+                    let v = var_not_found.split(':').collect::<Vec<&str>>();
+                    if v.len() == 2 {
+                        let start_col = v[0];
+                        let end_col = v[1];
+                    
+                        let as_index = |s: &str| {
+                            s.char_indices().map(|(a, b)| Grid::char_to_idx((a, &b))).fold(0, |a, b| a + b)
+                        };
+                    
+                        let start_idx = as_index(start_col);
+                        let end_idx = as_index(end_col);
+                    
+                        let mut buf = Vec::new();
+                    
+                        for x in start_idx..=end_idx {
+                            for y in 0..=self.max_y_at_x(x) {
+                                if let Some(s) = self.get_cell_raw(x, y) {
+                                    match s {
+                                        super::calc::CellType::Number(n) => buf.push(n.to_string()),
+                                        super::calc::CellType::String(_) => (),
+                                        super::calc::CellType::Equation(e) => buf.push(e.to_string()),
+                                    };
+                                }
+                            }
+                        }
+                        let start = original_equation.find(&var_not_found).expect("It should be here");
+                        let end = start + var_not_found.len();
+
+                        let res = buf.iter().enumerate().map(|(i,b )| {
+                            if i == buf.len()-1 {
+                                // last cell
+                                b.to_owned()
+                            } else {
+                                format!("{b},")
+                            }
+                        }).collect::<String>();
+
+                        let new_eq = format!("{}{}{}", &original_equation[..start], res, &original_equation[end..]);
+
+                        // FIXME this might be a dangerous recursion, as I don't think its bounded right now
+                        return self.evaluate(&new_eq)
+                    }
                     // panic!("Will not be able to parse this equation, cell {e} not found")
-                    return Err(format!("{e} is not a variable"));
+                    return Err(format!("{var_not_found} is not a variable"));
                 }
                 EvalexprError::TypeError {
                     expected: e,
@@ -260,6 +330,14 @@ impl Grid {
         }
     }
 
+    /// Char and Idx making a new index
+    /// AZ becomes:
+    /// (0, A)
+    /// (1, Z)
+    pub fn char_to_idx((idx, c): (usize, &char)) -> usize {
+        (c.to_ascii_lowercase() as usize - 97) + (26 * idx)
+    }
+
     /// Parse values in the format of A0, C10 ZZ99, etc, and
     /// turn them into an X,Y index.
     fn parse_to_idx(i: &str) -> Option<(usize, usize)> {
@@ -270,10 +348,7 @@ impl Grid {
         let x_idx = chars
             .iter()
             .enumerate()
-            .map(|(idx, c)| {
-                // convert to numbers
-                (c.to_ascii_lowercase() as usize - 97) + (26 * idx)
-            })
+            .map(Self::char_to_idx)
             .fold(0, |a, b| a + b);
 
         // get the y index from the numbers
@@ -403,6 +478,9 @@ fn alphanumeric_indexing() {
     assert_eq!(Grid::parse_to_idx("Aa10"), Some((26, 10)));
     assert_eq!(Grid::parse_to_idx("invalid"), None);
 
+    assert_eq!(Grid::char_to_idx((0, &'A')), 0);
+    assert_eq!(Grid::char_to_idx((1, &'A')), 26);
+
     assert_eq!(Grid::num_to_char(0).trim(), "A");
     assert_eq!(Grid::num_to_char(25).trim(), "Z");
     assert_eq!(Grid::num_to_char(26), "AA");
@@ -500,6 +578,14 @@ fn invalid_equations() {
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
     assert!(res.is_ok_and(|v| v == 10.));
+
+    // Trailing comma in function call
+    grid.set_cell("A0", 5.);
+    grid.set_cell("A1", 10.);
+    grid.set_cell("B0", "=avg(A0,A1,)".to_string());
+    let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
+    let res = grid.evaluate(&cell.to_string());
+    assert!(res.is_err());
 }
 
 #[test]

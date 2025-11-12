@@ -43,10 +43,10 @@ impl Widget for &App {
                 x2 += 1;
                 y2 += 1;
 
+                // in-between the Xs
                 if (x >= x1 && x <= x2) || (x >= x2 && x <= x1) {
-                    // in-between the Xs
+                    // in-between the Ys
                     if (y >= y1 && y <= y2) || (y >= y2 && y <= y1) {
-                        // in-between the Ys
                         return true;
                     }
                 }
