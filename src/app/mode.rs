@@ -112,12 +112,16 @@ impl Mode {
                         return;
                     }
                     // edit cell
-                    'i' | 'a' | 'r' => {
+                    'i' | 'a' => {
                         let (x, y) = app.grid.selected_cell;
 
                         let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or(String::new());
 
                         app.mode = Mode::Insert(Chord::from(val));
+                    }
+                    // replace cell
+                    'r' => {
+                        app.mode = Mode::Insert(Chord::from(String::new()));
                     }
                     'I' => { /* insert col before */ }
                     'A' => { /* insert col after */ }
