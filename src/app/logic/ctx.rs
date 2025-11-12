@@ -14,6 +14,35 @@ pub struct CallbackContext<'a> {
 }
 
 impl<'a> CallbackContext<'a> {
+    fn expand_range(&self, range: &str) -> Option<Vec<String>> {
+        let v = range.split(':').collect::<Vec<&str>>();
+        if v.len() == 2 {
+            let start_col = v[0];
+            let end_col = v[1];
+
+            let as_index = |s: &str| s.char_indices().map(|(a, b)| Grid::char_to_idx((a, &b))).fold(0, |a, b| a + b);
+
+            let start_idx = as_index(start_col);
+            let end_idx = as_index(end_col);
+
+            let mut buf = Vec::new();
+
+            for x in start_idx..=end_idx {
+                for y in 0..=self.variables.max_y_at_x(x) {
+                    if let Some(s) = self.variables.get_cell_raw(x, y) {
+                        match s {
+                            super::calc::CellType::Number(n) => buf.push(n.to_string()),
+                            super::calc::CellType::String(_) => (),
+                            super::calc::CellType::Equation(e) => buf.push(e.to_string()),
+                        };
+                    }
+                }
+            }
+            return Some(buf);
+        }
+        None
+    }
+
     fn get_functions() -> HashMap<String, Function<DefaultNumericTypes>> {
         let mut functions = HashMap::new();
 
@@ -75,21 +104,6 @@ impl<'a> CallbackContext<'a> {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn clear_variables(&mut self) {
-        ()
-    }
-
-    #[allow(dead_code)]
-    pub fn clear_functions(&mut self) {
-        ()
-    }
-
-    #[allow(dead_code)]
-    pub fn clear(&mut self) {
-        self.clear_variables();
-        self.clear_functions();
-    }
 }
 
 impl<'a> Context for CallbackContext<'a> {
@@ -113,6 +127,8 @@ impl<'a> Context for CallbackContext<'a> {
                         // deep we've gone.
                         return None;
                     }
+                    // remove the equals sign from the beginning, as that
+                    // tries to set variables with our evaluation lib
                     match eval_with_context(&eq[1..], self) {
                         Ok(e) => return Some(e),
                         Err(e) => {
@@ -129,6 +145,18 @@ impl<'a> Context for CallbackContext<'a> {
                         }
                     }
                 }
+            }
+        } else {
+            // identifier not found in cells, might be range
+            if let Some(v) = self.expand_range(identifier) {
+                dbg!(&v);
+                let mut vals = Vec::new();
+                for v in v {
+                    if let Some(value) = self.get_value(&v) {
+                        vals.push(value);
+                    }
+                }
+                return Some(Value::Tuple(vals));
             }
         }
         return None;

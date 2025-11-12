@@ -241,8 +241,6 @@ impl Grid {
     /// Only evaluates equations, such as `=10` or `=A1/C2`, not
     /// strings or numbers.
     pub fn evaluate(&self, mut eq: &str) -> Result<f64, String> {
-        let original_equation = eq;
-
         if eq.starts_with('=') {
             eq = &eq[1..];
         } else {
@@ -271,49 +269,6 @@ impl Grid {
             }
             Err(e) => match e {
                 EvalexprError::VariableIdentifierNotFound(var_not_found) => {
-                    // the identifier might be a range: A:A
-                    let v = var_not_found.split(':').collect::<Vec<&str>>();
-                    if v.len() == 2 {
-                        let start_col = v[0];
-                        let end_col = v[1];
-                    
-                        let as_index = |s: &str| {
-                            s.char_indices().map(|(a, b)| Grid::char_to_idx((a, &b))).fold(0, |a, b| a + b)
-                        };
-                    
-                        let start_idx = as_index(start_col);
-                        let end_idx = as_index(end_col);
-                    
-                        let mut buf = Vec::new();
-                    
-                        for x in start_idx..=end_idx {
-                            for y in 0..=self.max_y_at_x(x) {
-                                if let Some(s) = self.get_cell_raw(x, y) {
-                                    match s {
-                                        super::calc::CellType::Number(n) => buf.push(n.to_string()),
-                                        super::calc::CellType::String(_) => (),
-                                        super::calc::CellType::Equation(e) => buf.push(e.to_string()),
-                                    };
-                                }
-                            }
-                        }
-                        let start = original_equation.find(&var_not_found).expect("It should be here");
-                        let end = start + var_not_found.len();
-
-                        let res = buf.iter().enumerate().map(|(i,b )| {
-                            if i == buf.len()-1 {
-                                // last cell
-                                b.to_owned()
-                            } else {
-                                format!("{b},")
-                            }
-                        }).collect::<String>();
-
-                        let new_eq = format!("{}{}{}", &original_equation[..start], res, &original_equation[end..]);
-
-                        // FIXME this might be a dangerous recursion, as I don't think its bounded right now
-                        return self.evaluate(&new_eq)
-                    }
                     return Err(format!("\"{var_not_found}\" is not a variable"));
                 }
                 EvalexprError::TypeError {
