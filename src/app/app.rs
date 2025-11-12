@@ -1,4 +1,9 @@
-use std::{cmp::{max, min}, collections::HashMap, io, path::PathBuf};
+use std::{
+    cmp::{max, min},
+    collections::HashMap,
+    io,
+    path::PathBuf,
+};
 
 use ratatui::{
     DefaultTerminal, Frame,
@@ -10,7 +15,10 @@ use ratatui::{
 };
 
 use crate::app::{
-    error_msg::ErrorMessage, logic::calc::{CellType, Grid}, mode::Mode, screen::ScreenSpace
+    error_msg::ErrorMessage,
+    logic::calc::{CellType, Grid},
+    mode::Mode,
+    screen::ScreenSpace,
 };
 
 pub struct App {
@@ -25,7 +33,6 @@ pub struct App {
 
 impl Widget for &App {
     fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
-
         let (x_max, y_max) = self.screen.how_many_cells_fit_in(&area, &self.vars);
 
         let is_selected = |x: usize, y: usize| -> bool {
@@ -52,6 +59,9 @@ impl Widget for &App {
                 let mut display = String::new();
                 let mut style = Style::new().fg(Color::White);
 
+                let cell_width = self.screen.get_cell_width(&self.vars) as u16;
+                let cell_height = self.screen.get_cell_height(&self.vars) as u16;
+
                 // Minus 1 because of header cells,
                 // the grid is shifted over (1,1), so if you need
                 // to index the grid, these are you values.
@@ -70,6 +80,9 @@ impl Widget for &App {
 
                 const ORANGE1: Color = Color::Rgb(200, 160, 0);
                 const ORANGE2: Color = Color::Rgb(180, 130, 0);
+
+                let mut should_render = true;
+                let mut suggest_upper_bound = None;
 
                 match (x == 0, y == 0) {
                     // 0,0 vi mode
@@ -106,28 +119,44 @@ impl Widget for &App {
                     }
                     // grid squares
                     (false, false) => {
-                        if let Some(cell) = self.grid.get_cell_raw(x_idx, y_idx) {
-                            match cell {
-                                CellType::Number(c) => display = c.to_string(),
-                                CellType::String(s) => display = s.to_owned(),
-                                CellType::Equation(e) => {
-                                    if let Some(val) = self.grid.evaluate(e) {
-                                        display = val.to_string();
-                                        style = Style::new()
-                                            .underline_color(Color::DarkGray)
-                                            .add_modifier(Modifier::UNDERLINED);
-                                    } else {
-                                        // the formula is broken
-                                        display = e.to_owned();
-                                        style = Style::new()
-                                            .fg(Color::Red)
-                                            .underline_color(Color::Red)
-                                            .add_modifier(Modifier::UNDERLINED)
+                        match self.grid.get_cell_raw(x_idx, y_idx) {
+                            Some(cell) => {
+                                match cell {
+                                    CellType::Number(c) => display = c.to_string(),
+                                    CellType::String(s) => display = s.to_owned(),
+                                    CellType::Equation(e) => {
+                                        match self.grid.evaluate(e) {
+                                            Ok(val) => {
+                                                display = val.to_string();
+                                                style = Style::new()
+                                                    .underline_color(Color::DarkGray)
+                                                    .add_modifier(Modifier::UNDERLINED);
+                                            }
+                                            Err(err) => {
+                                                // the formula is broken
+                                                display = err.to_owned();
+                                                style = Style::new()
+                                                    .fg(Color::Red)
+                                                    .underline_color(Color::Red)
+                                                    .add_modifier(Modifier::UNDERLINED)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                suggest_upper_bound = Some(display.len() as u16);
+                                // check for cells to the right, see if we should truncate the cell width
+                                for i in 1..(display.len() as f32 / cell_width as f32).ceil() as usize {
+                                    if let Some(_) = self.grid.get_cell_raw(x_idx + i, y_idx) {
+                                        suggest_upper_bound = Some(cell_width * i as u16);
+                                        break;
                                     }
                                 }
                             }
+                            None => should_render = false,
                         }
                         if (x_idx, y_idx) == self.grid.selected_cell {
+                            should_render = true;
                             style = Style::new().fg(Color::Black).bg(Color::White);
                             // modify the style of the cell you are editing
                             if let Mode::Insert(_) = self.mode {
@@ -136,16 +165,24 @@ impl Widget for &App {
                         }
                     }
                 }
-                let w = self.screen.get_cell_width(&self.vars) as u16;
-                let h = self.screen.get_cell_height(&self.vars) as u16;
-                let area = Rect::new(
-                    area.x + (x * w),
-                    area.y + (y * h),
-                    w,
-                    h,
-                );
+                if should_render {
+                    let x_off = area.x + (x * cell_width);
+                    let y_off = area.y + (y * cell_height);
 
-                Paragraph::new(display).style(style).render(area, buf);
+                    let area = if let Some(suggestion) = suggest_upper_bound {
+                        let max_available_width = area.width - x_off;
+                        // draw the biggest cell possible, without going OOB off the screen
+                        let width = min(max_available_width, suggestion as u16);
+                        // Don't draw too small tho, we want full-sized cells, minium
+                        let width = max(cell_width, width);
+
+                        Rect::new(x_off, y_off, width, cell_height)
+                    } else {
+                        Rect::new(x_off, y_off, cell_width, cell_height)
+                    };
+
+                    Paragraph::new(display).style(style).render(area, buf);
+                }
             }
         }
     }
@@ -189,18 +226,16 @@ impl App {
         let body = layout[1];
 
         let len = match &self.mode {
-            Mode::Insert(edit) |
-            Mode::Command(edit) |
-            Mode::Chord(edit) => edit.len(),
+            Mode::Insert(edit) | Mode::Command(edit) | Mode::Chord(edit) => edit.len(),
             Mode::Normal => {
-                    let (x, y) = self.grid.selected_cell;
-                    let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string().len()).unwrap_or_default();
-                    cell
-            },
+                let (x, y) = self.grid.selected_cell;
+                let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string().len()).unwrap_or_default();
+                cell
+            }
             Mode::Visual(_) => 0,
         };
         // min 20 chars, expand if needed
-        let len = max(len as u16 +1, 20);
+        let len = max(len as u16 + 1, 20);
 
         let bottom_split = Layout::default()
             .direction(layout::Direction::Horizontal)
@@ -233,15 +268,19 @@ impl App {
         frame.render_widget(self, body);
         frame.render_widget(&self.error_msg, cmd_line_right);
         #[cfg(debug_assertions)]
-        frame.render_widget(Paragraph::new(format!("x/w y/h: cursor{:?} scroll({}, {}) cell({}, {}) screen({}, {}) len{len}",
-            self.grid.selected_cell,
-            self.screen.scroll_x(),
-            self.screen.scroll_y(),
-            self.screen.get_cell_width(&self.vars),
-            self.screen.get_cell_height(&self.vars),
-            body.width,
-            body.height,
-        )), cmd_line_debug);
+        frame.render_widget(
+            Paragraph::new(format!(
+                "x/w y/h: cursor{:?} scroll({}, {}) cell({}, {}) screen({}, {}) len{len}",
+                self.grid.selected_cell,
+                self.screen.scroll_x(),
+                self.screen.scroll_y(),
+                self.screen.get_cell_width(&self.vars),
+                self.screen.get_cell_height(&self.vars),
+                body.width,
+                body.height,
+            )),
+            cmd_line_debug,
+        );
     }
 
     fn handle_events(&mut self) -> io::Result<()> {

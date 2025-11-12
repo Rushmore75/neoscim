@@ -120,12 +120,12 @@ impl Grid {
 
     /// Only evaluates equations, such as `=10` or `=A1/C2` not,
     /// strings or numbers.
-    pub fn evaluate(&self, mut eq: &str) -> Option<f64> {
+    pub fn evaluate(&self, mut eq: &str) -> Result<f64, String> {
         if eq.starts_with('=') {
             eq = &eq[1..];
         } else {
             // Should be evaluating an equation
-            return None
+            return Err("not eq".to_string());
         }
 
         let ctx = ctx::CallbackContext::new(&self);
@@ -135,24 +135,24 @@ impl Grid {
                 if e.is_number() {
                     if e.is_float() {
                         let val = e.as_float().expect("Value lied about being a float");
-                        return Some(val);
+                        return Ok(val);
                     } else if e.is_int() {
                         let i = e.as_int().expect("Value lied about being an int");
-                        return Some(i as f64)
+                        return Ok(i as f64)
                     }
                 }
-                return None
+                return Err("Result is NaN".to_string())
             }
             Err(e) => match e {
-                EvalexprError::VariableIdentifierNotFound(_e) => {
+                EvalexprError::VariableIdentifierNotFound(e) => {
                     // panic!("Will not be able to parse this equation, cell {e} not found")
-                    return None
+                    return Err(format!("{e} is not a variable"))
                 }
-                EvalexprError::TypeError { expected: _, actual: _ } => {
+                EvalexprError::TypeError { expected: e, actual: a } => {
                     // IE: You put a string into a function that wants a float
-                    return None
+                    return Err(format!("Wanted {e:?}, got {a}"))
                 }
-                _ => panic!("{}", e),
+                _ => return Err(e.to_string()),
             },
         }
     }
@@ -375,7 +375,7 @@ fn fn_of_fn() {
     if let Some(cell) = grid.get_cell("D0") {
         let res = grid.evaluate(&cell.to_string());
 
-        assert!(res.is_some());
+        assert!(res.is_ok());
         assert_eq!(res.unwrap(), 6.);
         return;
     }
@@ -391,7 +391,7 @@ fn circular_reference_cells() {
 
     if let Some(cell) = grid.get_cell("A0") {
         let res = grid.evaluate(&cell.to_string());
-        assert!(res.is_none());
+        assert!(res.is_err());
         return;
     }
     panic!("Cell not found");
@@ -405,14 +405,14 @@ fn invalid_equations() {
     grid.set_cell("A0", "=invalid".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_none());
+    assert!(res.is_err());
 
     // Test an "equation" that's just 1 number
     grid.set_cell("B0", "=10".to_string());
     let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_some());
-    assert!(res.is_some_and(|v| v == 10.));
+    assert!(res.is_ok());
+    assert!(res.is_ok_and(|v| v == 10.));
     
 }
 
@@ -443,35 +443,35 @@ fn avg_function() {
     grid.set_cell("A0", "=avg(5)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_some());
+    assert!(res.is_ok());
     assert_eq!(res.unwrap(), 5.);
 
     grid.set_cell("A0", "=avg(5,10)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_some());
+    assert!(res.is_ok());
     assert_eq!(res.unwrap(), 7.5);
 
     grid.set_cell("A0", "=avg(5,10,15)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_some());
+    assert!(res.is_ok());
     assert_eq!(res.unwrap(), 10.);
 
     grid.set_cell("A0", "=avg(foo)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_none());
+    assert!(res.is_err());
 
     grid.set_cell("A0", "=avg(1, foo)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_none());
+    assert!(res.is_err());
 
     grid.set_cell("A0", "=avg()".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_none());
+    assert!(res.is_err());
 }
 
 #[test]
@@ -481,28 +481,28 @@ fn sum_function() {
     grid.set_cell("A0", "=sum(5)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_some());
+    assert!(res.is_ok());
     assert_eq!(res.unwrap(), 5.);
 
     grid.set_cell("A0", "=sum(5,10)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_some());
+    assert!(res.is_ok());
     assert_eq!(res.unwrap(), 15.);
 
     grid.set_cell("A0", "=sum(foo)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_none());
+    assert!(res.is_err());
 
     grid.set_cell("A0", "=sum(1, foo)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_none());
+    assert!(res.is_err());
 
     grid.set_cell("A0", "=sum()".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_none());
+    assert!(res.is_err());
 }
 
