@@ -1,11 +1,15 @@
-use std::{fmt::Display, fs, io::{Read, Write}, path::PathBuf};
+use std::{
+    fmt::Display,
+    fs,
+    io::{Read, Write},
+    path::PathBuf,
+};
 
 use evalexpr::*;
 
 use crate::app::logic::ctx;
 
 pub const LEN: usize = 1000;
-
 
 pub struct Grid {
     //  a b c ...
@@ -22,9 +26,7 @@ pub struct Grid {
 
 impl std::fmt::Debug for Grid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Grid")
-            .field("cells", &"Too many to print")
-            .finish()
+        f.debug_struct("Grid").field("cells", &"Too many to print").finish()
     }
 }
 
@@ -45,8 +47,10 @@ impl Grid {
                 if ext != "csv" {
                     path.add_extension("csv");
                 }
-            },
-            None => {path.add_extension("csv");},
+            }
+            None => {
+                path.add_extension("csv");
+            }
         }
 
         let mut f = fs::OpenOptions::new().write(true).append(false).truncate(true).create(true).open(path)?;
@@ -57,7 +61,8 @@ impl Grid {
                 let mut display = cell.as_ref().map(|f| f.to_string()).unwrap_or(String::new());
 
                 // escape quotes " -> ""
-                let needs_escaping = display.char_indices().filter(|f| f.1==CSV_ESCAPE).map(|f| f.0).collect::<Vec<usize>>();
+                let needs_escaping =
+                    display.char_indices().filter(|f| f.1 == CSV_ESCAPE).map(|f| f.0).collect::<Vec<usize>>();
                 for idx in needs_escaping.iter().rev() {
                     display.insert(*idx, CSV_ESCAPE);
                 }
@@ -107,51 +112,7 @@ impl Grid {
         let mut buf = String::new();
         file.read_to_string(&mut buf)?;
         for (yi, line) in buf.lines().enumerate() {
-            
-            // 1, 2, "=avg(A0,B0)", she said: """wow""",
-
-            let mut cells = Vec::new();
-
-            let mut inside_quotes = false;
-            let mut token = Vec::new();
-
-            let mut iter = line.as_bytes().iter().map(|f| *f as char).peekable();
-            while let Some(c) = iter.next() {
-                // we just finished
-                if c == CSV_DELIMITER && !inside_quotes {
-                    if !token.is_empty() {
-                        cells.push(Some(token.iter().collect::<String>()));
-                    } else {
-                        cells.push(None);
-                    }
-                    token.clear();
-                    continue;
-                }
-                // start reading an escaped cell
-                if c == '"' {
-                    if inside_quotes {
-                        // we might be escaping a quote
-                        if let Some(next) = iter.peek() {
-                            // check if the next cell is a quote, if it is, that's because it's being escaped by the current quote
-                            if *next == '"' {
-                                // don't save the escape char
-                                continue;
-                            } else {
-                                // escaped cell over
-                                inside_quotes = false;
-                                continue;
-                            }
-                        } else {
-                            // we are at the end of the row, so idk if it matters anymore, as there won't be a next()
-                        }
-                    } else {
-                        inside_quotes = true;
-                        // don't save the scape char
-                        continue;
-                    }
-                }
-                token.push(c)
-            }
+            let cells = Self::parse_csv_line(line);
 
             for (xi, cell) in cells.into_iter().enumerate() {
                 // This gets automatically duck-typed
@@ -160,6 +121,75 @@ impl Grid {
         }
 
         Ok(grid)
+    }
+
+    fn parse_csv_line(line: &str) -> Vec<Option<String>> {
+        let mut iter = line.as_bytes().iter().map(|f| *f as char).peekable();
+        let mut cells = Vec::new();
+        let mut token = Vec::new();
+
+        let mut inside_quotes = false;
+        let mut is_escaped = false;
+
+        while let Some(c) = iter.next() {
+            // we just finished
+            if c == CSV_DELIMITER && !inside_quotes {
+                if !token.is_empty() {
+                    cells.push(Some(token.iter().collect::<String>()));
+                } else {
+                    cells.push(None);
+                }
+                token.clear();
+                continue;
+            }
+            // start reading an escaped cell
+            if c == '"' {
+                if inside_quotes {
+                    // we might be escaping a quote
+                    if let Some(next) = iter.peek() {
+                        // check if the next cell is a quote, if it is, that's because it's being escaped by the current quote
+                        // only escape the next char if this char isn't escaped it's self
+                        if *next == '"' && !is_escaped {
+                            // don't save the escape char
+                            is_escaped = true;
+                            continue;
+                        } else if is_escaped {
+                            is_escaped = false;
+                        } else {
+                            // escaped cell over
+                            inside_quotes = false;
+                            continue;
+                        }
+                    } else {
+                        // we are at the end of the row, so idk if it matters anymore, as there won't be a next()
+                        todo!()
+                    }
+                } else {
+                    // not inside quotes, must be escaping another one
+                    if let Some(next) = iter.peek() {
+                        if *next == '"' && !is_escaped {
+                            // the current char is " and the next char is "
+                            // forget this one and mark to save the next
+                            is_escaped = true;
+                            continue; 
+                        } else if is_escaped {
+                            is_escaped = false;
+                        } else {
+                            inside_quotes = true;
+                            continue;
+                        }
+                    } else {
+                        // single quote at the end of a line, is odd
+                        todo!()
+                    }
+                }
+            }
+            token.push(c)
+        }
+        if !token.is_empty() {
+            cells.push(Some(token.iter().collect::<String>()));
+        }
+        cells
     }
 
     pub fn new() -> Self {
@@ -199,19 +229,22 @@ impl Grid {
                         return Ok(val);
                     } else if e.is_int() {
                         let i = e.as_int().expect("Value lied about being an int");
-                        return Ok(i as f64)
+                        return Ok(i as f64);
                     }
                 }
-                return Err("Result is NaN".to_string())
+                return Err("Result is NaN".to_string());
             }
             Err(e) => match e {
                 EvalexprError::VariableIdentifierNotFound(e) => {
                     // panic!("Will not be able to parse this equation, cell {e} not found")
-                    return Err(format!("{e} is not a variable"))
+                    return Err(format!("{e} is not a variable"));
                 }
-                EvalexprError::TypeError { expected: e, actual: a } => {
+                EvalexprError::TypeError {
+                    expected: e,
+                    actual: a,
+                } => {
                     // IE: You put a string into a function that wants a float
-                    return Err(format!("Wanted {e:?}, got {a}"))
+                    return Err(format!("Wanted {e:?}, got {a}"));
                 }
                 _ => return Err(e.to_string()),
             },
@@ -221,15 +254,8 @@ impl Grid {
     /// Parse values in the format of A0, C10 ZZ99, etc, and
     /// turn them into an X,Y index.
     fn parse_to_idx(i: &str) -> Option<(usize, usize)> {
-        let chars = i
-            .chars()
-            .take_while(|c| c.is_alphabetic())
-            .collect::<Vec<char>>();
-        let nums = i
-            .chars()
-            .skip(chars.len())
-            .take_while(|c| c.is_numeric())
-            .collect::<String>();
+        let chars = i.chars().take_while(|c| c.is_alphabetic()).collect::<Vec<char>>();
+        let nums = i.chars().skip(chars.len()).take_while(|c| c.is_numeric()).collect::<String>();
 
         // get the x index from the chars
         let x_idx = chars
@@ -245,9 +271,8 @@ impl Grid {
         if let Ok(y_idx) = nums.parse::<usize>() {
             return Some((x_idx, y_idx));
         } else {
-            return None
+            return None;
         }
-
     }
 
     /// Helper for tests
@@ -258,7 +283,7 @@ impl Grid {
         }
     }
 
-    pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x,y): (usize, usize), val: Option<T>) {
+    pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
         // TODO check oob
         self.cells[x][y] = val.map(|v| v.into());
         self.dirty = true;
@@ -270,35 +295,34 @@ impl Grid {
     /// etc
     pub fn get_cell(&self, cell_id: &str) -> &Option<CellType> {
         if let Some((x, y)) = Self::parse_to_idx(cell_id) {
-            return self.get_cell_raw(x, y)
+            return self.get_cell_raw(x, y);
         }
         &None
     }
 
     pub fn get_cell_raw(&self, x: usize, y: usize) -> &Option<CellType> {
         if x >= LEN || y >= LEN {
-            return &None
+            return &None;
         }
         &self.cells[x][y]
     }
 
     pub fn num_to_char(idx: usize) -> String {
         /*
-          A = 0 
-         AA = 26 
-        AAA = Not going to worry about it yet 
-         */        
+          A = 0
+         AA = 26
+        AAA = Not going to worry about it yet
+         */
 
         let mut word: [char; 2] = [' '; 2];
 
         if idx >= 26 {
-            word[0]= ((idx/26) + 65 -1) as u8 as char;
+            word[0] = ((idx / 26) + 65 - 1) as u8 as char;
         }
-        word[1]= ((idx%26) + 65) as u8 as char;
+        word[1] = ((idx % 26) + 65) as u8 as char;
 
         word.iter().collect()
     }
-
 }
 
 impl Default for Grid {
@@ -332,11 +356,7 @@ impl CellType {
         if let Ok(parse) = value.parse::<f64>() {
             Self::Number(parse)
         } else {
-            if value.starts_with('=') {
-                Self::Equation(value)
-            } else {
-                Self::String(value)
-            }
+            if value.starts_with('=') { Self::Equation(value) } else { Self::String(value) }
         }
     }
 }
@@ -361,10 +381,7 @@ fn cell_strings() {
     grid.set_cell("A0", "Hello".to_string());
     assert!(grid.get_cell("A0").is_some());
 
-    assert_eq!(
-        grid.get_cell("A0").as_ref().unwrap().to_string(),
-        String::from("Hello")
-    );
+    assert_eq!(grid.get_cell("A0").as_ref().unwrap().to_string(), String::from("Hello"));
 }
 
 // Testing if A0 -> 0,0 and if 0,0 -> A0
@@ -376,7 +393,7 @@ fn alphanumeric_indexing() {
     assert_eq!(Grid::parse_to_idx("A10"), Some((0, 10)));
     assert_eq!(Grid::parse_to_idx("Aa10"), Some((26, 10)));
     assert_eq!(Grid::parse_to_idx("invalid"), None);
-    
+
     assert_eq!(Grid::num_to_char(0).trim(), "A");
     assert_eq!(Grid::num_to_char(25).trim(), "Z");
     assert_eq!(Grid::num_to_char(26), "AA");
@@ -402,13 +419,13 @@ fn valid_equations() {
     grid.set_cell("D0", "=5./2.".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
-    assert_eq!(res, 2.5); 
+    assert_eq!(res, 2.5);
 
     // Float / Int mix
     grid.set_cell("D0", "=5./2".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
-    assert_eq!(res, 2.5); 
+    assert_eq!(res, 2.5);
 
     // divide "ints" (should become floats)
     grid.set_cell("D0", "=5/2".to_string());
@@ -474,7 +491,6 @@ fn invalid_equations() {
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
     assert!(res.is_ok_and(|v| v == 10.));
-    
 }
 
 #[test]
@@ -567,3 +583,15 @@ fn sum_function() {
     assert!(res.is_err());
 }
 
+#[test]
+fn parse_csv() {
+    assert_eq!(Grid::parse_csv_line("1,2,3"), vec![Some("1".to_string()), Some("2".to_string()), Some("3".to_string())]);
+
+    assert_eq!(Grid::parse_csv_line("1,\",\",3"), vec![Some("1".to_string()), Some(",".to_string()), Some("3".to_string())]);
+
+    assert_eq!(Grid::parse_csv_line("1,she said \"\"wow\"\",3"), vec![Some("1".to_string()), Some("she said \"wow\"".to_string()), Some("3".to_string())]);
+
+    assert_eq!(Grid::parse_csv_line("1,\"she said \"\"hello, world\"\"\",3"), vec![Some("1".to_string()), Some("she said \"hello, world\"".to_string()), Some("3".to_string())]);
+
+    assert_eq!(Grid::parse_csv_line("1,she said \"\"hello world\"\"\"\",3"), vec![Some("1".to_string()), Some("she said \"hello world\"\"".to_string()), Some("3".to_string())]);
+}
