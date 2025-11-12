@@ -120,6 +120,9 @@ impl Grid {
             }
         }
 
+        // force dirty back off, we just read the data so it's gtg
+        grid.dirty = false;
+
         Ok(grid)
     }
 
