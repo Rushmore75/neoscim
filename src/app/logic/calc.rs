@@ -161,8 +161,11 @@ impl Grid {
                             continue;
                         }
                     } else {
-                        // we are at the end of the row, so idk if it matters anymore, as there won't be a next()
-                        todo!()
+                        if is_escaped {
+                            is_escaped = false;
+                        } else {
+                            continue;
+                        }
                     }
                 } else {
                     // not inside quotes, must be escaping another one
@@ -179,8 +182,11 @@ impl Grid {
                             continue;
                         }
                     } else {
-                        // single quote at the end of a line, is odd
-                        todo!()
+                        // not inside quotes, EOL
+
+                        if is_escaped {
+                            is_escaped = false;
+                        }
                     }
                 }
             }
@@ -585,13 +591,29 @@ fn sum_function() {
 
 #[test]
 fn parse_csv() {
+    //standard parsing
     assert_eq!(Grid::parse_csv_line("1,2,3"), vec![Some("1".to_string()), Some("2".to_string()), Some("3".to_string())]);
 
+    // comma in a cell
     assert_eq!(Grid::parse_csv_line("1,\",\",3"), vec![Some("1".to_string()), Some(",".to_string()), Some("3".to_string())]);
 
+    // quotes in a cell
     assert_eq!(Grid::parse_csv_line("1,she said \"\"wow\"\",3"), vec![Some("1".to_string()), Some("she said \"wow\"".to_string()), Some("3".to_string())]);
 
+    // quotes and comma in cell
     assert_eq!(Grid::parse_csv_line("1,\"she said \"\"hello, world\"\"\",3"), vec![Some("1".to_string()), Some("she said \"hello, world\"".to_string()), Some("3".to_string())]);
 
-    assert_eq!(Grid::parse_csv_line("1,she said \"\"hello world\"\"\"\",3"), vec![Some("1".to_string()), Some("she said \"hello world\"\"".to_string()), Some("3".to_string())]);
+    // ending with a quote
+    assert_eq!(Grid::parse_csv_line("1,she said \"\"hello world\"\""), vec![Some("1".to_string()), Some("she said \"hello world\"".to_string())]);
+
+    // ending with a quote with a comma
+    assert_eq!(Grid::parse_csv_line("1,\"she said \"\"hello, world\"\"\""), vec![Some("1".to_string()), Some("she said \"hello, world\"".to_string())]);
+
+    // starting with a quote
+    assert_eq!(Grid::parse_csv_line("\"\"hello world\"\" is what she said,1"), vec![Some("\"hello world\" is what she said".to_string()), Some("1".to_string())]);
+
+    // starting with a quote with a comma
+    assert_eq!(Grid::parse_csv_line("\"\"\"hello, world\"\" is what she said\",1"), vec![Some("\"hello, world\" is what she said".to_string()), Some("1".to_string())]);
+    
+
 }
