@@ -1,10 +1,25 @@
 mod app;
 
+use std::env::args;
+
 use crate::app::{app::App};
 
 fn main() -> Result<(), std::io::Error> {
+
+    let args = args().collect::<Vec<String>>();
+    let mut app = if args.len() > 1 {
+        let file = &args[1];
+        match App::new_with_file(file) {
+            Ok(o) => o,
+            Err(e) => {
+                return Err(e);
+            },
+        }
+    } else {
+        App::new()
+    };
+
     let term = ratatui::init();
-    let mut app = App::new();
     let res = app.run(term);
     ratatui::restore();
     return res;

@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    fmt::Display,
+    fmt::Display, fs,
 };
 
 use ratatui::{
@@ -54,16 +54,40 @@ impl Mode {
 
             match args[0] {
                 "w" => {
-                    if let Some(file) = &app.file {
-                        unimplemented!("Figure out how we want to save Grid to a csv or something")
-                    } else {
-                        if let Some(arg) = args.get(1) {
-                            unimplemented!("Saving a file")
+                    // first try the passed argument as file
+                    if let Some(arg) = args.get(1) {
+                        if let Err(e) = app.grid.save_to(arg) {
+                            app.error_msg = ErrorMessage::new(format!("{e}"));
+                        } else {
+                            // file saving was a success, adopt the provided file
+                            // if we don't already have one (this is how vim works)
+                            if let None = app.file {
+                                app.file = Some(arg.into())
+                            }
                         }
+                    // then try the file that we opened the program with
+                    } else if let Some(file) = &app.file {
+                        if let Err(e) = app.grid.save_to(file) {
+                            app.error_msg = ErrorMessage::new(format!("{e}"));
+                        }
+                    // you need to provide a file from *somewhere*
+                    } else {
                         app.error_msg = ErrorMessage::new("No file selected");
                     }
                 }
-                "q" => app.exit = true,
+                // quit
+                "q" => {
+                    if app.grid.needs_to_be_saved() {
+                        app.exit = false;
+                        app.error_msg = ErrorMessage::new("File not saved");
+                    } else {
+                        app.exit = true
+                    }
+                },
+                // force quit
+                "q!" => {
+                    app.exit = true;
+                }
                 "set" => {
                     if let Some(arg) = args.get(1) {
                         let parts: Vec<&str> = arg.split('=').collect();
@@ -237,6 +261,9 @@ impl Chord {
 
     pub fn as_string(&self) -> String {
         self.buf.iter().collect()
+    }
+    pub fn len(&self) -> usize {
+        self.buf.len()
     }
 }
 

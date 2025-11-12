@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io, path::PathBuf};
+use std::{cmp::{max, min}, collections::HashMap, io, path::PathBuf};
 
 use ratatui::{
     DefaultTerminal, Frame,
@@ -164,6 +164,13 @@ impl App {
         }
     }
 
+    pub fn new_with_file(file: impl Into<PathBuf> + Clone) -> std::io::Result<Self> {
+        let mut app = Self::new();
+        app.file = Some(file.clone().into());
+        app.grid = Grid::new_from_file(file.into())?;
+        Ok(app)
+    }
+
     pub fn run(&mut self, mut term: DefaultTerminal) -> Result<(), std::io::Error> {
         while !self.exit {
             term.draw(|frame| self.draw(frame))?;
@@ -181,13 +188,28 @@ impl App {
         let cmd_line = layout[0];
         let body = layout[1];
 
+        let len = match &self.mode {
+            Mode::Insert(edit) |
+            Mode::Command(edit) |
+            Mode::Chord(edit) => edit.len(),
+            Mode::Normal => {
+                    let (x, y) = self.grid.selected_cell;
+                    let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string().len()).unwrap_or_default();
+                    cell
+            },
+            Mode::Visual(_) => 0,
+        };
+        // min 20 chars, expand if needed
+        let len = max(len as u16 +1, 20);
+
         let bottom_split = Layout::default()
             .direction(layout::Direction::Horizontal)
-            .constraints([Constraint::Min(30), Constraint::Min(100)])
+            .constraints([Constraint::Length(len), Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(cmd_line);
 
         let cmd_line_left = bottom_split[0];
         let cmd_line_right = bottom_split[1];
+        let cmd_line_debug = bottom_split[2];
 
         match &self.mode {
             Mode::Insert(editor) => {
@@ -211,7 +233,7 @@ impl App {
         frame.render_widget(self, body);
         frame.render_widget(&self.error_msg, cmd_line_right);
         #[cfg(debug_assertions)]
-        frame.render_widget(Paragraph::new(format!("x/w y/h: cursor{:?} scroll({}, {}) cell({}, {}) screen({}, {})",
+        frame.render_widget(Paragraph::new(format!("x/w y/h: cursor{:?} scroll({}, {}) cell({}, {}) screen({}, {}) len{len}",
             self.grid.selected_cell,
             self.screen.scroll_x(),
             self.screen.scroll_y(),
@@ -219,7 +241,7 @@ impl App {
             self.screen.get_cell_height(&self.vars),
             body.width,
             body.height,
-        )), cmd_line_right);
+        )), cmd_line_debug);
     }
 
     fn handle_events(&mut self) -> io::Result<()> {

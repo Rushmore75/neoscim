@@ -1,7 +1,6 @@
-use std::fmt::Display;
+use std::{fmt::Display, fs, io::{Read, Write}, path::PathBuf};
 
 use evalexpr::*;
-use ratatui::buffer::Cell;
 
 use crate::app::logic::ctx;
 
@@ -17,6 +16,8 @@ pub struct Grid {
     cells: Vec<Vec<Option<CellType>>>,
     /// (X, Y)
     pub selected_cell: (usize, usize),
+    /// Have unsaved modifications been made?
+    dirty: bool,
 }
 
 impl std::fmt::Debug for Grid {
@@ -28,11 +29,43 @@ impl std::fmt::Debug for Grid {
 }
 
 impl Grid {
+    pub fn needs_to_be_saved(&self) -> bool {
+        self.dirty
+    }
+
+    /// Save file to `path` as a csv. Path with have `csv` appended to it if it
+    /// does not already have the extension.
+    pub fn save_to(&mut self, path: impl Into<PathBuf>) -> std::io::Result<()> {
+        let mut path = path.into();
+        match path.extension() {
+            Some(ext) => {
+                if ext != "csv" {
+                    path.add_extension("csv");
+                }
+            },
+            None => {path.add_extension("csv");},
+        }
+
+        let mut f = fs::OpenOptions::new().write(true).append(false).truncate(true).create(true).open(path)?;
+        let (mx, my) = self.max();
+        for y in 0..=my {
+            for x in 0..=mx {
+                let cell = &self.cells[x][y];
+                let display = cell.as_ref().map(|f| f.to_string()).unwrap_or(String::new());
+                write!(f, "{display},")?;
+            }
+            write!(f, "\n")?;
+        }
+        f.flush()?;
+
+        self.dirty = false;
+        Ok(())
+    }
 
     /// Iterate over the entire grid and see where
     /// the farthest modified cell is.
     #[must_use]
-    pub fn max(&self) -> (usize, usize) {
+    fn max(&self) -> (usize, usize) {
         let mut max_x = 0;
         let mut max_y = 0;
 
@@ -52,6 +85,22 @@ impl Grid {
         (max_x, max_y)
     }
 
+    pub fn new_from_file(path: impl Into<PathBuf>) -> std::io::Result<Self> {
+        let mut grid = Self::new();
+
+        let mut file = fs::OpenOptions::new().read(true).open(path.into())?;
+        let mut buf = String::new();
+        file.read_to_string(&mut buf)?;
+        for (yi, line) in buf.lines().enumerate() {
+            for (xi, cell) in line.split(',').enumerate() {
+                // This gets automatically duck-typed
+                grid.set_cell_raw((xi, yi), Some(cell.to_string()));
+            }
+        }
+
+        Ok(grid)
+    }
+
     pub fn new() -> Self {
         let mut a = Vec::with_capacity(LEN);
         for _ in 0..LEN {
@@ -65,6 +114,7 @@ impl Grid {
         Self {
             cells: a,
             selected_cell: (0, 0),
+            dirty: false,
         }
     }
 
@@ -146,6 +196,7 @@ impl Grid {
     pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x,y): (usize, usize), val: Option<T>) {
         // TODO check oob
         self.cells[x][y] = val.map(|v| v.into());
+        self.dirty = true;
     }
 
     /// Get cells via text like:
