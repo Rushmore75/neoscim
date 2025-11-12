@@ -246,10 +246,16 @@ impl App {
                     event::KeyCode::Enter => {
                         let v = editor.as_string();
 
+                        // try to insert as a float
                         if let Ok(v) = v.parse::<f64>() {
-                            self.grid.set_cell_raw(self.grid.selected_cell, v);
+                            self.grid.set_cell_raw(self.grid.selected_cell, Some(v));
                         } else {
-                            self.grid.set_cell_raw(self.grid.selected_cell, v);
+                            // if you can't, then insert as a string
+                            if !v.is_empty() {
+                                self.grid.set_cell_raw(self.grid.selected_cell, Some(v));
+                            } else {
+                                self.grid.set_cell_raw::<CellType>(self.grid.selected_cell, None);
+                            }
                         }
 
                         self.mode = Mode::Normal;

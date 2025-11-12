@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use evalexpr::*;
+use ratatui::buffer::Cell;
 
 use crate::app::logic::ctx;
 
@@ -27,6 +28,30 @@ impl std::fmt::Debug for Grid {
 }
 
 impl Grid {
+
+    /// Iterate over the entire grid and see where
+    /// the farthest modified cell is.
+    #[must_use]
+    pub fn max(&self) -> (usize, usize) {
+        let mut max_x = 0;
+        let mut max_y = 0;
+
+        for (xi, x) in self.cells.iter().enumerate() {
+            for (yi, cell) in x.iter().enumerate() {
+                if cell.is_some() {
+                    if yi > max_y {
+                        max_y = yi
+                    }
+                    if xi > max_x {
+                        max_x = xi
+                    }
+                }
+            }
+        }
+
+        (max_x, max_y)
+    }
+
     pub fn new() -> Self {
         let mut a = Vec::with_capacity(LEN);
         for _ in 0..LEN {
@@ -110,15 +135,17 @@ impl Grid {
 
     }
 
-    pub fn set_cell<T: Into<CellType>>(&mut self, cell_id: &str, val: T) {
+    /// Helper for tests
+    #[cfg(test)]
+    fn set_cell<T: Into<CellType>>(&mut self, cell_id: &str, val: T) {
         if let Some(loc) = Self::parse_to_idx(cell_id) {
-            self.set_cell_raw(loc, val);
+            self.set_cell_raw(loc, Some(val));
         }
     }
 
-    pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x,y): (usize, usize), val: T) {
+    pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x,y): (usize, usize), val: Option<T>) {
         // TODO check oob
-        self.cells[x][y] = Some(val.into());
+        self.cells[x][y] = val.map(|v| v.into());
     }
 
     /// Get cells via text like:
@@ -332,4 +359,24 @@ fn invalid_equations() {
     assert!(res.is_some());
     assert!(res.is_some_and(|v| v == 10.));
     
+}
+
+#[test]
+fn grid_max() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", 1.);
+    let (mx, my) = grid.max();
+    assert_eq!(mx, 0);
+    assert_eq!(my, 0);
+
+    grid.set_cell("B0", 1.);
+    let (mx, my) = grid.max();
+    assert_eq!(mx, 1);
+    assert_eq!(my, 0);
+
+    grid.set_cell("B5", 1.);
+    let (mx, my) = grid.max();
+    assert_eq!(mx, 1);
+    assert_eq!(my, 5);
 }

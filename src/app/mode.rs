@@ -7,7 +7,7 @@ use ratatui::{
     prelude, style::{Color, Style}, widgets::{Paragraph, Widget}
 };
 
-use crate::app::{app::App, logic::calc::LEN, error_msg::ErrorMessage};
+use crate::app::{app::App, error_msg::ErrorMessage, logic::calc::{CellType, LEN}};
 
 pub enum Mode {
     Insert(Chord),
@@ -142,7 +142,7 @@ impl Mode {
                     if key == 'd' {
                         for x in low_x..=hi_x {
                             for y in low_y..=hi_y {
-                                app.grid.set_cell_raw((x, y), String::new());
+                                app.grid.set_cell_raw::<CellType>((x, y), None);
                             }
                         }
                         app.mode = Mode::Normal
@@ -179,7 +179,7 @@ impl Mode {
                     Err(_) => match chord.as_string().as_str() {
                         "d " | "dw" => {
                             let loc = app.grid.selected_cell;
-                            app.grid.set_cell_raw(loc, String::new());
+                            app.grid.set_cell_raw::<CellType>(loc, None);
                             app.mode = Mode::Normal;
                         }
                         "gg" => {
