@@ -28,6 +28,9 @@ impl std::fmt::Debug for Grid {
     }
 }
 
+const CSV_DELIMITER: char = ',';
+const CSV_ESCAPE: char = '"';
+
 impl Grid {
     pub fn needs_to_be_saved(&self) -> bool {
         self.dirty
@@ -51,8 +54,20 @@ impl Grid {
         for y in 0..=my {
             for x in 0..=mx {
                 let cell = &self.cells[x][y];
-                let display = cell.as_ref().map(|f| f.to_string()).unwrap_or(String::new());
-                write!(f, "{display},")?;
+                let mut display = cell.as_ref().map(|f| f.to_string()).unwrap_or(String::new());
+
+                // escape quotes " -> ""
+                let needs_escaping = display.char_indices().filter(|f| f.1==CSV_ESCAPE).map(|f| f.0).collect::<Vec<usize>>();
+                for idx in needs_escaping.iter().rev() {
+                    display.insert(*idx, CSV_ESCAPE);
+                }
+
+                // escape string of it has a comma
+                if display.contains(CSV_DELIMITER) {
+                    write!(f, "\"{display}\"{CSV_DELIMITER}")?;
+                } else {
+                    write!(f, "{display}{CSV_DELIMITER}")?;
+                }
             }
             write!(f, "\n")?;
         }
@@ -92,9 +107,55 @@ impl Grid {
         let mut buf = String::new();
         file.read_to_string(&mut buf)?;
         for (yi, line) in buf.lines().enumerate() {
-            for (xi, cell) in line.split(',').enumerate() {
+            
+            // 1, 2, "=avg(A0,B0)", she said: """wow""",
+
+            let mut cells = Vec::new();
+
+            let mut inside_quotes = false;
+            let mut token = Vec::new();
+
+            let mut iter = line.as_bytes().iter().map(|f| *f as char).peekable();
+            while let Some(c) = iter.next() {
+                // we just finished
+                if c == CSV_DELIMITER && !inside_quotes {
+                    if !token.is_empty() {
+                        cells.push(Some(token.iter().collect::<String>()));
+                    } else {
+                        cells.push(None);
+                    }
+                    token.clear();
+                    continue;
+                }
+                // start reading an escaped cell
+                if c == '"' {
+                    if inside_quotes {
+                        // we might be escaping a quote
+                        if let Some(next) = iter.peek() {
+                            // check if the next cell is a quote, if it is, that's because it's being escaped by the current quote
+                            if *next == '"' {
+                                // don't save the escape char
+                                continue;
+                            } else {
+                                // escaped cell over
+                                inside_quotes = false;
+                                continue;
+                            }
+                        } else {
+                            // we are at the end of the row, so idk if it matters anymore, as there won't be a next()
+                        }
+                    } else {
+                        inside_quotes = true;
+                        // don't save the scape char
+                        continue;
+                    }
+                }
+                token.push(c)
+            }
+
+            for (xi, cell) in cells.into_iter().enumerate() {
                 // This gets automatically duck-typed
-                grid.set_cell_raw((xi, yi), Some(cell.to_string()));
+                grid.set_cell_raw((xi, yi), cell);
             }
         }
 

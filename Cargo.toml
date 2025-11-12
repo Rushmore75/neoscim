@@ -5,6 +5,6 @@ edition = "2024"
 
 [dependencies]
 # evalexpr = "13.0.0"
-evalexpr ={ path = "../evalexpr"}
-# evalexpr = { git="https://github.com/Rushmore75/evalexpr.git" }
+# evalexpr ={ path = "../evalexpr"}
+evalexpr = { git="https://github.com/Rushmore75/evalexpr.git" }
 ratatui = "0.29.0"
