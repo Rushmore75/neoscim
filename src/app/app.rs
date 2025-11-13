@@ -29,6 +29,8 @@ pub struct App {
     pub error_msg: ErrorMessage,
     pub vars: HashMap<String, String>,
     pub screen: ScreenSpace,
+    // this could probably be a normal array
+    pub marks: HashMap<char, (usize, usize)>,
 }
 
 impl Widget for &App {
@@ -198,6 +200,7 @@ impl App {
             error_msg: ErrorMessage::none(),
             vars: HashMap::new(),
             screen: ScreenSpace::new(),
+            marks: HashMap::new(),
         }
     }
 

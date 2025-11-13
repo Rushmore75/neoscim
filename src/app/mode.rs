@@ -1,13 +1,16 @@
-use std::{
-    cmp::min,
-    fmt::Display,
-};
+use std::{cmp::min, fmt::Display};
 
 use ratatui::{
-    prelude, style::{Color, Style}, widgets::{Paragraph, Widget}
+    prelude,
+    style::{Color, Style},
+    widgets::{Paragraph, Widget},
 };
 
-use crate::app::{app::App, error_msg::ErrorMessage, logic::calc::{CellType, LEN}};
+use crate::app::{
+    app::App,
+    error_msg::ErrorMessage,
+    logic::calc::{CellType, LEN},
+};
 
 pub enum Mode {
     Insert(Chord),
@@ -83,7 +86,7 @@ impl Mode {
                     } else {
                         app.exit = true
                     }
-                },
+                }
                 // force quit
                 "q!" => {
                     app.exit = true;
@@ -180,7 +183,7 @@ impl Mode {
             Mode::Chord(chord) => {
                 chord.add_char(key);
 
-                // the chord starts with a :, send it over to be a comman
+                // the chord starts with a :, send it over to be a command
                 if chord.buf[0] == ':' {
                     app.mode = Mode::Command(Chord::new(':'));
                     return;
@@ -204,23 +207,42 @@ impl Mode {
                             }
                         }
                     },
-                    Err(_) => match chord.as_string().as_str() {
-                        "d " | "dw" => {
-                            let loc = app.grid.selected_cell;
-                            app.grid.set_cell_raw::<CellType>(loc, None);
-                            app.mode = Mode::Normal;
+                    Err(_) => {
+                        let c = chord.as_string();
+                        // match everything up to, and then the new key
+                        match (&c[..c.len()-1], key) {
+                            // delete cell under cursor
+                            ("d", ' ') | ("d", 'w') => {
+                                let loc = app.grid.selected_cell;
+                                app.grid.set_cell_raw::<CellType>(loc, None);
+                                app.mode = Mode::Normal;
+                            }
+                            // go to top of row
+                            ("g", 'g') => {
+                                app.grid.selected_cell.1 = 0;
+                                app.mode = Mode::Normal;
+                            }
+                            // center screen to cursor
+                            ("z", 'z') => {
+                                app.screen.center_x(app.grid.selected_cell, &app.vars);
+                                app.screen.center_y(app.grid.selected_cell, &app.vars);
+                                app.mode = Mode::Normal;
+                            }
+                            // mark cell
+                            ("m", i) => {
+                                app.marks.insert(i, app.grid.selected_cell);
+                                app.mode = Mode::Normal;
+                            }
+                            // goto marked cell
+                            ("'", i) => {
+                                if let Some(coords) = app.marks.get(&i) {
+                                    app.grid.selected_cell = *coords;
+                                }
+                                app.mode = Mode::Normal;
+                            }
+                            _ => {}
                         }
-                        "gg" => {
-                            app.grid.selected_cell.1 = 0;
-                            app.mode = Mode::Normal;
-                        }
-                        "zz" => {
-                            app.screen.center_x(app.grid.selected_cell, &app.vars);
-                            app.screen.center_y(app.grid.selected_cell, &app.vars);
-                            app.mode = Mode::Normal;
-                        }
-                        _ => {}
-                    },
+                    }
                 }
             }
             _ => todo!(),
@@ -271,4 +293,33 @@ impl Widget for &Chord {
     fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
         Paragraph::new(self.buf.iter().collect::<String>()).render(area, buf);
     }
+}
+
+#[test]
+fn keybinds() {
+    let mut app = App::new();
+
+    assert_eq!(app.grid.selected_cell, (0,0));
+
+    // start at B1
+    app.grid.selected_cell = (1,1);
+    assert_eq!(app.grid.selected_cell, (1,1));
+
+    // gg
+    app.mode = Mode::Chord(Chord::new('g'));
+    Mode::process_key(&mut app, 'g');
+    assert_eq!(app.grid.selected_cell, (1,0));
+
+    // 0
+    app.mode = Mode::Normal;
+    Mode::process_key(&mut app, '0');
+    assert_eq!(app.grid.selected_cell, (0,0));
+
+    // 10l
+    // this should mean all the directions work
+    app.grid.selected_cell = (0,0);
+    app.mode = Mode::Chord(Chord::new('1'));
+    Mode::process_key(&mut app, '0');
+    Mode::process_key(&mut app, 'l');
+    assert_eq!(app.grid.selected_cell, (10,0));
 }
