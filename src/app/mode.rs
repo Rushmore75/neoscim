@@ -9,7 +9,7 @@ use ratatui::{
 use crate::app::{
     app::App,
     error_msg::StatusMessage,
-    logic::calc::{CellType, LEN},
+    logic::calc::LEN,
 };
 
 pub enum Mode {

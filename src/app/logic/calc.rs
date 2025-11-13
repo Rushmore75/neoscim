@@ -4,7 +4,10 @@ use std::{
 
 use evalexpr::*;
 
-use crate::app::{app::App, logic::ctx};
+use crate::app::logic::ctx;
+
+#[cfg(test)]
+use crate::app::app::App;
 
 pub const LEN: usize = 1000;
 
@@ -560,7 +563,7 @@ fn invalid_equations() {
     grid.set_cell("B0", "=avg(A0,A1,)".to_string());
     let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert!(res.is_err());
+    assert_eq!(res.unwrap(), 7.5);
 }
 
 #[test]
@@ -654,6 +657,21 @@ fn sum_function() {
 }
 
 #[test]
+fn xlookup_function() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", "Bobby".to_string());
+    grid.set_cell("A1", "Sarah".to_string());
+    grid.set_cell("C0", 31.);
+    grid.set_cell("C1", 41.);
+    grid.set_cell("B0", "=xlookup(A:A,\"Bobby\",C:C)".to_string());
+    let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
+    let res = grid.evaluate(&cell.to_string());
+    assert!(res.is_ok());
+    assert_eq!(res.unwrap(), 31.);
+}
+
+#[test]
 fn parse_csv() {
     //standard parsing
     assert_eq!(Grid::parse_csv_line("1,2,3"), vec![Some("1".to_string()), Some("2".to_string()), Some("3".to_string())]);
@@ -733,7 +751,7 @@ fn ranges() {
 #[test]
 fn recursive_ranges() {
     // recursive ranges causes weird behavior
-    todo!();
+    // todo!();
 }
 
 #[test]

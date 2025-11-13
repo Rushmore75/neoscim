@@ -20,11 +20,12 @@ impl<'a> CallbackContext<'a> {
             let start_col = v[0];
             let end_col = v[1];
 
-            let as_index = |s: &str| s
-                .char_indices()
-                // .filter(|f| f.1 as u8 >= 97) // prevent sub with overflow errors
-                .map(|(idx, c)| (c.to_ascii_lowercase() as usize - 97) + (26 * idx))
-                .fold(0, |a, b| a + b);
+            let as_index = |s: &str| {
+                s.char_indices()
+                    // .filter(|f| f.1 as u8 >= 97) // prevent sub with overflow errors
+                    .map(|(idx, c)| (c.to_ascii_lowercase() as usize - 97) + (26 * idx))
+                    .fold(0, |a, b| a + b)
+            };
 
             let start_idx = as_index(start_col);
             let end_idx = as_index(end_col);
@@ -54,8 +55,11 @@ impl<'a> CallbackContext<'a> {
                     let mut total: f64 = 0.;
                     let mut count = 0f64;
                     for i in args {
-                        total += i.as_number()?;
-                        count += 1.;
+                        // there could be strings and whatnot in the range
+                        if i.is_number() {
+                            total += i.as_number()?;
+                            count += 1.;
+                        }
                     }
                     let res = total / count;
                     Ok(Value::Float(res))
@@ -78,7 +82,10 @@ impl<'a> CallbackContext<'a> {
 
                     let mut total: f64 = 0.;
                     for i in args {
-                        total += i.as_number()?;
+                        // there could be strings and whatnot in the range
+                        if i.is_number() {
+                            total += i.as_number()?;
+                        }
                     }
                     let res = total;
                     Ok(Value::Float(res))
@@ -93,6 +100,41 @@ impl<'a> CallbackContext<'a> {
             }),
         );
 
+        functions.insert(
+            "xlookup".to_string(),
+            Function::new(|arg| {
+                let expected = vec![ValueType::Tuple, ValueType::String, ValueType::Tuple];
+                if arg.is_tuple() {
+                    let args = arg.as_tuple()?;
+
+                    if args.len() == 3 {
+                        let lookup_array = &args[0];
+                        let lookup_value = &args[1];
+                        let return_array = &args[2];
+
+
+                        if lookup_array.is_tuple() && return_array.is_tuple() {
+                            let mut found_at = None;
+                            for (i, val) in lookup_array.as_tuple()?.iter().enumerate() {
+                                if val == lookup_value {
+                                    found_at = Some(i);
+                                }
+                            }
+                            if let Some(i) = found_at {
+                                if let Some(v) = return_array.as_tuple()?.get(i) {
+                                    return Ok(v.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(EvalexprError::TypeError {
+                    expected,
+                    actual: arg.clone(),
+                })
+            }),
+        );
+
         functions
     }
 
@@ -104,7 +146,6 @@ impl<'a> CallbackContext<'a> {
             without_builtin_functions: false,
         }
     }
-
 }
 
 impl<'a> Context for CallbackContext<'a> {
@@ -116,7 +157,7 @@ impl<'a> Context for CallbackContext<'a> {
         if let Some(v) = self.variables.get_cell(identifier) {
             match v {
                 super::calc::CellType::Number(n) => return Some(Value::Float(n.to_owned())),
-                super::calc::CellType::String(_) => return None,
+                super::calc::CellType::String(s) => return Some(Value::String(s.to_owned())),
                 super::calc::CellType::Equation(eq) => {
                     if let Ok(mut depth) = self.eval_depth.write() {
                         *depth += 1;
@@ -154,18 +195,20 @@ impl<'a> Context for CallbackContext<'a> {
                 for cell in range {
                     match cell {
                         CellType::Number(e) => vals.push(Value::Float(*e)),
-                        CellType::String(_) => (),
+                        CellType::String(s) => vals.push(Value::String(s.to_owned())),
                         CellType::Equation(eq) => {
                             if let Ok(mut depth) = self.eval_depth.write() {
                                 *depth += 1;
                                 if *depth > RECURSION_DEPTH_LIMIT {
                                     return None;
                                 }
-                            } else { return None; }
+                            } else {
+                                return None;
+                            }
                             if let Ok(val) = eval_with_context(&eq[1..], self) {
                                 vals.push(val);
                             }
-                        },
+                        }
                     }
                 }
                 let v = Value::Tuple(vals);
