@@ -231,14 +231,31 @@ impl App {
         // min 20 chars, expand if needed
         let len = max(len as u16 + 1, 20);
 
-        let bottom_split = Layout::default()
+        let file_name_status = {
+            let mut file_name = "[No Name]";
+            let mut icon = "";
+            if let Some(file) = &self.file {
+                if let Some(f) = file.file_name() {
+                    if let Some(f) = f.to_str() {
+                        file_name = f;
+                    }
+                }
+            }
+            if self.grid.needs_to_be_saved() {
+                icon = "[+]";
+            } 
+            format!("{file_name}{icon}")
+        };
+
+        let cmd_line_split = Layout::default()
             .direction(layout::Direction::Horizontal)
-            .constraints([Constraint::Length(len), Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Length(len), Constraint::Length(file_name_status.len() as u16 + 1), Constraint::Percentage(50), Constraint::Percentage(50)])
             .split(cmd_line);
 
-        let cmd_line_left = bottom_split[0];
-        let cmd_line_right = bottom_split[1];
-        let cmd_line_debug = bottom_split[2];
+        let cmd_line_left = cmd_line_split[0];
+        let cmd_line_status = cmd_line_split[1];
+        let cmd_line_right = cmd_line_split[2];
+        let cmd_line_debug = cmd_line_split[3];
 
         match &self.mode {
             Mode::Insert(editor) => {
@@ -261,6 +278,7 @@ impl App {
 
         frame.render_widget(self, body);
         frame.render_widget(&self.msg, cmd_line_right);
+        frame.render_widget(Paragraph::new(file_name_status), cmd_line_status);
         #[cfg(debug_assertions)]
         frame.render_widget(
             Paragraph::new(format!(
