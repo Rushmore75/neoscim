@@ -269,7 +269,9 @@ impl Mode {
                     }
                 }
             }
-            _ => todo!(),
+            // IDK why it works but it does. Keystrokes are process somewhere else?
+            Mode::Insert(_chord) => {},
+            Mode::Command(_chord) => {},
         }
     }
 }
