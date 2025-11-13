@@ -1,6 +1,6 @@
 # neoscim
 
-Neo Spreadsheet Calculator Improved
+*New* Spreadsheet Calculator Improved
 
 Based loosely off sc-im (spreadsheet calculator improvised), which has dumb keybinds and not many features.
 ## Improvements from sc-im
