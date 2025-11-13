@@ -2,7 +2,7 @@ use std::{
     fmt::Display,
     fs,
     io::{Read, Write},
-    path::PathBuf, sync::RwLock,
+    path::PathBuf,
 };
 
 use evalexpr::*;
@@ -283,25 +283,22 @@ impl Grid {
         }
     }
 
-    /// Char and Idx making a new index
-    /// AZ becomes:
-    /// (0, A)
-    /// (1, Z)
-    pub fn char_to_idx((idx, c): (usize, &char)) -> usize {
-        (c.to_ascii_lowercase() as usize - 97) + (26 * idx)
-    }
-
     /// Parse values in the format of A0, C10 ZZ99, etc, and
     /// turn them into an X,Y index.
     fn parse_to_idx(i: &str) -> Option<(usize, usize)> {
         let chars = i.chars().take_while(|c| c.is_alphabetic()).collect::<Vec<char>>();
         let nums = i.chars().skip(chars.len()).take_while(|c| c.is_numeric()).collect::<String>();
 
+        // At least half the arguments are gone
+        if chars.len() == 0 || nums.len() == 0 {
+            return None
+        }
+        
         // get the x index from the chars
         let x_idx = chars
             .iter()
             .enumerate()
-            .map(Self::char_to_idx)
+            .map(|(idx, c)| (c.to_ascii_lowercase() as usize - 97) + (26 * idx))
             .fold(0, |a, b| a + b);
 
         // get the y index from the numbers
@@ -431,9 +428,10 @@ fn alphanumeric_indexing() {
     assert_eq!(Grid::parse_to_idx("A10"), Some((0, 10)));
     assert_eq!(Grid::parse_to_idx("Aa10"), Some((26, 10)));
     assert_eq!(Grid::parse_to_idx("invalid"), None);
-
-    assert_eq!(Grid::char_to_idx((0, &'A')), 0);
-    assert_eq!(Grid::char_to_idx((1, &'A')), 26);
+    assert_eq!(Grid::parse_to_idx("1"), None);
+    assert_eq!(Grid::parse_to_idx("A"), None);
+    assert_eq!(Grid::parse_to_idx(":"), None);
+    assert_eq!(Grid::parse_to_idx("="), None);
 
     assert_eq!(Grid::num_to_char(0).trim(), "A");
     assert_eq!(Grid::num_to_char(25).trim(), "Z");
@@ -668,15 +666,49 @@ fn ranges() {
     grid.set_cell("A1", 1.);
     grid.set_cell("B0", "=sum(A:A)".to_string());
 
+    // range with numbers
     let cell = grid.get_cell("B0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
     assert_eq!(res, 3.);
 
+    // use range output as input for other function
     grid.set_cell("B1", "=B0*2".to_string());
-
-    // cell math
     let cell = grid.get_cell("B1").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
     assert_eq!(res, 6.);
 
+    // use equation outputs as range input
+    grid.set_cell("A2", "=C0+1".to_string());
+    grid.set_cell("C0", 5.);
+
+    let cell = grid.get_cell("A2").as_ref().expect("Just set it");
+    let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
+    assert_eq!(res, 6.);
+
+    let cell = grid.get_cell("B0").as_ref().expect("Just set it");
+    let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
+    assert_eq!(res, 9.);
+
+    // use function outputs as range input
+    grid.set_cell("B1", 2.);
+    grid.set_cell("C0", "=sum(B:B)".to_string());
+    grid.set_cell("A2", "null".to_string());
+
+    let cell = grid.get_cell("C0").as_ref().expect("Just set it");
+    let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
+    assert_eq!(res, 5.);
+
+    // use range outputs as range input
+    grid.set_cell("D0", "=sum(C:C)".to_string());
+    grid.set_cell("C1", 1.);
+
+    let cell = grid.get_cell("D0").as_ref().expect("Just set it");
+    let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
+    assert_eq!(res, 6.);
+}
+
+#[test]
+fn recursive_ranges() {
+    // recursive ranges causes weird behavior
+    todo!();
 }

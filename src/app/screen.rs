@@ -28,7 +28,7 @@ impl ScreenSpace {
             let x_cells = (screen_size.0 / self.get_cell_width(vars) as usize) -2;
             let x_center = self.scroll_x() + (x_cells/2);
 
-            let delta = (cursor_x as isize - x_center as isize);
+            let delta = cursor_x as isize - x_center as isize;
             self.scroll.0 = self.scroll.0.saturating_add_signed(delta);
         }
     }
@@ -37,7 +37,7 @@ impl ScreenSpace {
             let y_cells = (screen_size.1 / self.get_cell_height(vars) as usize) -2;
             let y_center = self.scroll_y() + (y_cells/2);
 
-            let delta = (cursor_y as isize - y_center as isize);
+            let delta = cursor_y as isize - y_center as isize;
             self.scroll.1 = self.scroll.1.saturating_add_signed(delta);
         }
     }

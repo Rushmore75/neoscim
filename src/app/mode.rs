@@ -1,6 +1,6 @@
 use std::{
     cmp::min,
-    fmt::Display, fs,
+    fmt::Display,
 };
 
 use ratatui::{

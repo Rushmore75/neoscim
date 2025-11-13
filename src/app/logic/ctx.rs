@@ -1,8 +1,8 @@
-use std::{collections::HashMap, process::id, sync::RwLock};
+use std::{collections::HashMap, sync::RwLock};
 
 use evalexpr::{error::EvalexprResultValue, *};
 
-use crate::app::logic::calc::Grid;
+use crate::app::logic::calc::{CellType, Grid};
 
 pub struct CallbackContext<'a> {
     variables: &'a Grid,
@@ -14,13 +14,17 @@ pub struct CallbackContext<'a> {
 }
 
 impl<'a> CallbackContext<'a> {
-    fn expand_range(&self, range: &str) -> Option<Vec<String>> {
+    fn expand_range(&self, range: &str) -> Option<Vec<&CellType>> {
         let v = range.split(':').collect::<Vec<&str>>();
         if v.len() == 2 {
             let start_col = v[0];
             let end_col = v[1];
 
-            let as_index = |s: &str| s.char_indices().map(|(a, b)| Grid::char_to_idx((a, &b))).fold(0, |a, b| a + b);
+            let as_index = |s: &str| s
+                .char_indices()
+                // .filter(|f| f.1 as u8 >= 97) // prevent sub with overflow errors
+                .map(|(idx, c)| (c.to_ascii_lowercase() as usize - 97) + (26 * idx))
+                .fold(0, |a, b| a + b);
 
             let start_idx = as_index(start_col);
             let end_idx = as_index(end_col);
@@ -30,11 +34,7 @@ impl<'a> CallbackContext<'a> {
             for x in start_idx..=end_idx {
                 for y in 0..=self.variables.max_y_at_x(x) {
                     if let Some(s) = self.variables.get_cell_raw(x, y) {
-                        match s {
-                            super::calc::CellType::Number(n) => buf.push(n.to_string()),
-                            super::calc::CellType::String(_) => (),
-                            super::calc::CellType::Equation(e) => buf.push(e.to_string()),
-                        };
+                        buf.push(s);
                     }
                 }
             }
@@ -75,6 +75,7 @@ impl<'a> CallbackContext<'a> {
             Function::new(|arg| {
                 if arg.is_tuple() {
                     let args = arg.as_tuple()?;
+
                     let mut total: f64 = 0.;
                     for i in args {
                         total += i.as_number()?;
@@ -110,6 +111,8 @@ impl<'a> Context for CallbackContext<'a> {
     type NumericTypes = DefaultNumericTypes;
 
     fn get_value(&self, identifier: &str) -> Option<Value<Self::NumericTypes>> {
+        const RECURSION_DEPTH_LIMIT: usize = 20;
+
         if let Some(v) = self.variables.get_cell(identifier) {
             match v {
                 super::calc::CellType::Number(n) => return Some(Value::Float(n.to_owned())),
@@ -117,9 +120,7 @@ impl<'a> Context for CallbackContext<'a> {
                 super::calc::CellType::Equation(eq) => {
                     if let Ok(mut depth) = self.eval_depth.write() {
                         *depth += 1;
-                    }
-                    if let Ok(depth) = self.eval_depth.read() {
-                        if *depth > 10 {
+                        if *depth > RECURSION_DEPTH_LIMIT {
                             return None;
                         }
                     } else {
@@ -147,16 +148,28 @@ impl<'a> Context for CallbackContext<'a> {
                 }
             }
         } else {
-            // identifier not found in cells, might be range
-            if let Some(v) = self.expand_range(identifier) {
-                dbg!(&v);
+            // identifier did not locate a cell, might be range
+            if let Some(range) = self.expand_range(identifier) {
                 let mut vals = Vec::new();
-                for v in v {
-                    if let Some(value) = self.get_value(&v) {
-                        vals.push(value);
+                for cell in range {
+                    match cell {
+                        CellType::Number(e) => vals.push(Value::Float(*e)),
+                        CellType::String(_) => (),
+                        CellType::Equation(eq) => {
+                            if let Ok(mut depth) = self.eval_depth.write() {
+                                *depth += 1;
+                                if *depth > RECURSION_DEPTH_LIMIT {
+                                    return None;
+                                }
+                            } else { return None; }
+                            if let Ok(val) = eval_with_context(&eq[1..], self) {
+                                vals.push(val);
+                            }
+                        },
                     }
                 }
-                return Some(Value::Tuple(vals));
+                let v = Value::Tuple(vals);
+                return Some(v);
             }
         }
         return None;
