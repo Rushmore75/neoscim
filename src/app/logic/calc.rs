@@ -1,5 +1,9 @@
 use std::{
-    cmp::{max, min}, fmt::Display, fs, io::{Read, Write}, path::PathBuf
+    cmp::{max, min},
+    fmt::Display,
+    fs,
+    io::{Read, Write},
+    path::PathBuf,
 };
 
 use evalexpr::*;
@@ -46,18 +50,18 @@ impl Grid {
         let y = (cy as i32).saturating_add(y);
 
         // make it positive
-        let x = max(x,0) as usize;
-        let y = max(y,0) as usize;
+        let x = max(x, 0) as usize;
+        let y = max(y, 0) as usize;
 
         // keep it in the grid
-        let x = min(x, LEN-1);
-        let y = min(y, LEN-1);
+        let x = min(x, LEN - 1);
+        let y = min(y, LEN - 1);
 
         self.mv_cursor_to(x, y);
     }
 
     pub fn mv_cursor_to(&mut self, x: usize, y: usize) {
-        self.selected_cell = (x,y)
+        self.selected_cell = (x, y)
     }
 
     pub fn needs_to_be_saved(&self) -> bool {
@@ -68,14 +72,27 @@ impl Grid {
     /// does not already have the extension.
     pub fn save_to(&mut self, path: impl Into<PathBuf>) -> std::io::Result<()> {
         let mut path = path.into();
+
+        const CSV: &str = "csv";
+        const CUSTOM_EXT: &str = "nscim";
+
+        let resolve_values;
+
         match path.extension() {
             Some(ext) => {
-                if ext != "csv" {
-                    path.add_extension("csv");
+                match ext.to_str() {
+                    Some(CSV) => {
+                        resolve_values = true;
+                    }
+                    _ => {
+                        resolve_values = false;
+                        path.add_extension(CUSTOM_EXT);
+                    }
                 }
             }
             None => {
-                path.add_extension("csv");
+                resolve_values = false;
+                path.add_extension(CUSTOM_EXT);
             }
         }
 
@@ -84,21 +101,18 @@ impl Grid {
         for y in 0..=my {
             for x in 0..=mx {
                 let cell = &self.cells[x][y];
-                let mut display = cell.as_ref().map(|f| f.to_string()).unwrap_or(String::new());
 
-                // escape quotes " -> ""
-                let needs_escaping =
-                    display.char_indices().filter(|f| f.1 == CSV_ESCAPE).map(|f| f.0).collect::<Vec<usize>>();
-                for idx in needs_escaping.iter().rev() {
-                    display.insert(*idx, CSV_ESCAPE);
-                }
-
-                // escape string of it has a comma
-                if display.contains(CSV_DELIMITER) {
-                    write!(f, "\"{display}\"{CSV_DELIMITER}")?;
+                let data = if let Some(cell) = cell {
+                    if let Ok(val) = self.evaluate(&cell.to_string()) && resolve_values {
+                        val.to_string()
+                    } else {
+                        cell.to_string_csv_escaped()
+                    }
                 } else {
-                    write!(f, "{display}{CSV_DELIMITER}")?;
-                }
+                    CSV_DELIMITER.to_string()
+                };
+
+                write!(f, "{data}")?;
             }
             write!(f, "\n")?;
         }
@@ -112,7 +126,7 @@ impl Grid {
     pub fn max_y_at_x(&self, x: usize) -> usize {
         let mut max_y = 0;
         if let Some(col) = self.cells.get(x) {
-            // we could do fancy things like .take_while(not null) but then 
+            // we could do fancy things like .take_while(not null) but then
             // we would have to deal with empty cells and stuff, which sounds
             // boring. This will be fast "enough", considering the grid is
             // probably only like 1k cells
@@ -223,7 +237,7 @@ impl Grid {
                             // the current char is " and the next char is "
                             // forget this one and mark to save the next
                             is_escaped = true;
-                            continue; 
+                            continue;
                         } else if is_escaped {
                             is_escaped = false;
                         } else {
@@ -317,9 +331,9 @@ impl Grid {
 
         // At least half the arguments are gone
         if chars.len() == 0 || nums.len() == 0 {
-            return None
+            return None;
         }
-        
+
         // get the x index from the chars
         let x_idx = chars
             .iter()
@@ -411,6 +425,23 @@ impl Into<CellType> for String {
 }
 
 impl CellType {
+    fn to_string_csv_escaped(&self) -> String {
+        let mut display = self.to_string();
+
+        // escape quotes " -> ""
+        let needs_escaping = display.char_indices().filter(|f| f.1 == CSV_ESCAPE).map(|f| f.0).collect::<Vec<usize>>();
+        for idx in needs_escaping.iter().rev() {
+            display.insert(*idx, CSV_ESCAPE);
+        }
+
+        // escape string of it has a comma
+        if display.contains(CSV_DELIMITER) {
+            format!("\"{display}\"{CSV_DELIMITER}")
+        } else {
+            format!("{display}{CSV_DELIMITER}")
+        }
+    }
+
     fn duck_type<'a>(value: impl Into<String>) -> Self {
         let value = value.into();
 
@@ -674,29 +705,52 @@ fn xlookup_function() {
 #[test]
 fn parse_csv() {
     //standard parsing
-    assert_eq!(Grid::parse_csv_line("1,2,3"), vec![Some("1".to_string()), Some("2".to_string()), Some("3".to_string())]);
+    assert_eq!(
+        Grid::parse_csv_line("1,2,3"),
+        vec![Some("1".to_string()), Some("2".to_string()), Some("3".to_string())]
+    );
 
     // comma in a cell
-    assert_eq!(Grid::parse_csv_line("1,\",\",3"), vec![Some("1".to_string()), Some(",".to_string()), Some("3".to_string())]);
+    assert_eq!(
+        Grid::parse_csv_line("1,\",\",3"),
+        vec![Some("1".to_string()), Some(",".to_string()), Some("3".to_string())]
+    );
 
     // quotes in a cell
-    assert_eq!(Grid::parse_csv_line("1,she said \"\"wow\"\",3"), vec![Some("1".to_string()), Some("she said \"wow\"".to_string()), Some("3".to_string())]);
+    assert_eq!(
+        Grid::parse_csv_line("1,she said \"\"wow\"\",3"),
+        vec![Some("1".to_string()), Some("she said \"wow\"".to_string()), Some("3".to_string())]
+    );
 
     // quotes and comma in cell
-    assert_eq!(Grid::parse_csv_line("1,\"she said \"\"hello, world\"\"\",3"), vec![Some("1".to_string()), Some("she said \"hello, world\"".to_string()), Some("3".to_string())]);
+    assert_eq!(
+        Grid::parse_csv_line("1,\"she said \"\"hello, world\"\"\",3"),
+        vec![Some("1".to_string()), Some("she said \"hello, world\"".to_string()), Some("3".to_string())]
+    );
 
     // ending with a quote
-    assert_eq!(Grid::parse_csv_line("1,she said \"\"hello world\"\""), vec![Some("1".to_string()), Some("she said \"hello world\"".to_string())]);
+    assert_eq!(
+        Grid::parse_csv_line("1,she said \"\"hello world\"\""),
+        vec![Some("1".to_string()), Some("she said \"hello world\"".to_string())]
+    );
 
     // ending with a quote with a comma
-    assert_eq!(Grid::parse_csv_line("1,\"she said \"\"hello, world\"\"\""), vec![Some("1".to_string()), Some("she said \"hello, world\"".to_string())]);
+    assert_eq!(
+        Grid::parse_csv_line("1,\"she said \"\"hello, world\"\"\""),
+        vec![Some("1".to_string()), Some("she said \"hello, world\"".to_string())]
+    );
 
     // starting with a quote
-    assert_eq!(Grid::parse_csv_line("\"\"hello world\"\" is what she said,1"), vec![Some("\"hello world\" is what she said".to_string()), Some("1".to_string())]);
+    assert_eq!(
+        Grid::parse_csv_line("\"\"hello world\"\" is what she said,1"),
+        vec![Some("\"hello world\" is what she said".to_string()), Some("1".to_string())]
+    );
 
     // starting with a quote with a comma
-    assert_eq!(Grid::parse_csv_line("\"\"\"hello, world\"\" is what she said\",1"), vec![Some("\"hello, world\" is what she said".to_string()), Some("1".to_string())]);
-    
+    assert_eq!(
+        Grid::parse_csv_line("\"\"\"hello, world\"\" is what she said\",1"),
+        vec![Some("\"hello, world\" is what she said".to_string()), Some("1".to_string())]
+    );
 }
 
 #[test]
@@ -759,8 +813,8 @@ fn cursor_fns() {
     // surprisingly, this test was needed
     let mut app = App::new();
     let c = app.grid.cursor();
-    assert_eq!(c, (0,0));
+    assert_eq!(c, (0, 0));
 
     app.grid.mv_cursor_to(1, 0);
-    assert_eq!(app.grid.cursor(), (1,0));
+    assert_eq!(app.grid.cursor(), (1, 0));
 }
