@@ -1,11 +1,6 @@
-use std::cmp::min;
-
 use evalexpr::eval_with_context;
 
-use crate::app::logic::{
-    calc::{CellType, Grid},
-    ctx::ExtractionContext,
-};
+use crate::app::logic::{calc::Grid, cell::CellType, ctx::ExtractionContext};
 
 #[cfg(test)]
 use crate::app::{
@@ -62,7 +57,7 @@ impl Clipboard {
 
                 if translate {
                     if let Some(cell) = cell {
-                        let trans = Clipboard::translate_cell(cell, self.source_cell, into.cursor());
+                        let trans = cell.translate_cell(self.source_cell, into.cursor());
                         into.set_cell_raw(idx, Some(trans));
                     } else {
                         // cell doesn't exist, no need to translate
@@ -78,44 +73,6 @@ impl Clipboard {
         let (lx, ly) = self.last_paste_cell;
         self.momentum = (cx as i32 - lx as i32, cy as i32 - ly as i32);
         self.last_paste_cell = (cx, cy);
-    }
-
-    fn translate_cell(cell: &CellType, from: (usize, usize), to: (usize, usize)) -> CellType {
-        match cell {
-            // don't translate non-equations
-            CellType::Number(_) | CellType::String(_) => return cell.clone(),
-            CellType::Equation(eq) => {
-                // extract all the variables
-                let ctx = ExtractionContext::new();
-                let _ = eval_with_context(eq, &ctx);
-
-                let mut rolling = eq.clone();
-                // translate standard vars A0 -> A1
-                for old_var in ctx.dump_vars() {
-                    if let Some((src_x, src_y)) = Grid::parse_to_idx(&old_var) {
-                        let (x1, y1) = from;
-                        let x1 = x1 as i32;
-                        let y1 = y1 as i32;
-                        let (x2, y2) = to;
-                        let x2 = x2 as i32;
-                        let y2 = y2 as i32;
-
-                        let dest_x = (src_x as i32 + (x2 - x1)) as usize;
-                        let dest_y = (src_y as i32 + (y2 - y1)) as usize;
-
-                        let alpha = Grid::num_to_char(dest_x);
-                        let alpha = alpha.trim();
-                        let new_var = format!("{alpha}{dest_y}");
-
-                        // swap out vars
-                        rolling = rolling.replace(&old_var, &new_var);
-                    } else {
-                        // why you coping invalid stuff, nerd?
-                    }
-                }
-                return rolling.into();
-            }
-        }
     }
 
     /// Clones data from Grid into self.

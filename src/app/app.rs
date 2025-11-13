@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::{
-    clipboard::Clipboard, error_msg::StatusMessage, logic::calc::{CellType, Grid}, mode::Mode, screen::ScreenSpace
+    clipboard::Clipboard, error_msg::StatusMessage, logic::{calc::Grid, cell::CellType}, mode::Mode, screen::ScreenSpace
 };
 
 pub struct App {

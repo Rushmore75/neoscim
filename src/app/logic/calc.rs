@@ -8,7 +8,10 @@ use std::{
 
 use evalexpr::*;
 
-use crate::app::logic::ctx;
+use crate::app::logic::{
+    cell::{CSV_DELIMITER, CellType},
+    ctx,
+};
 
 #[cfg(test)]
 use crate::app::app::App;
@@ -34,135 +37,22 @@ impl std::fmt::Debug for Grid {
     }
 }
 
-const CSV_DELIMITER: char = ',';
-const CSV_ESCAPE: char = '"';
-
 impl Grid {
-    pub fn cursor(&self) -> (usize, usize) {
-        self.selected_cell
-    }
-
-    pub fn apply_momentum(&mut self, (x, y): (i32, i32)) {
-        let (cx, cy) = self.cursor();
-
-        assert_eq!(0i32.saturating_add(-1), -1);
-        let x = (cx as i32).saturating_add(x);
-        let y = (cy as i32).saturating_add(y);
-
-        // make it positive
-        let x = max(x, 0) as usize;
-        let y = max(y, 0) as usize;
-
-        // keep it in the grid
-        let x = min(x, LEN - 1);
-        let y = min(y, LEN - 1);
-
-        self.mv_cursor_to(x, y);
-    }
-
-    pub fn mv_cursor_to(&mut self, x: usize, y: usize) {
-        self.selected_cell = (x, y)
-    }
-
-    pub fn needs_to_be_saved(&self) -> bool {
-        self.dirty
-    }
-
-    /// Save file to `path` as a csv. Path with have `csv` appended to it if it
-    /// does not already have the extension.
-    pub fn save_to(&mut self, path: impl Into<PathBuf>) -> std::io::Result<()> {
-        let mut path = path.into();
-
-        const CSV: &str = "csv";
-        const CUSTOM_EXT: &str = "nscim";
-
-        let resolve_values;
-
-        match path.extension() {
-            Some(ext) => {
-                match ext.to_str() {
-                    Some(CSV) => {
-                        resolve_values = true;
-                    }
-                    _ => {
-                        resolve_values = false;
-                        path.add_extension(CUSTOM_EXT);
-                    }
-                }
+    pub fn new() -> Self {
+        let mut a = Vec::with_capacity(LEN);
+        for _ in 0..LEN {
+            let mut b = Vec::with_capacity(LEN);
+            for _ in 0..LEN {
+                b.push(None)
             }
-            None => {
-                resolve_values = false;
-                path.add_extension(CUSTOM_EXT);
-            }
+            a.push(b)
         }
 
-        let mut f = fs::OpenOptions::new().write(true).append(false).truncate(true).create(true).open(path)?;
-        let (mx, my) = self.max();
-        for y in 0..=my {
-            for x in 0..=mx {
-                let cell = &self.cells[x][y];
-
-                let data = if let Some(cell) = cell {
-                    if let Ok(val) = self.evaluate(&cell.to_string()) && resolve_values {
-                        val.to_string()
-                    } else {
-                        cell.to_string_csv_escaped()
-                    }
-                } else {
-                    CSV_DELIMITER.to_string()
-                };
-
-                write!(f, "{data}")?;
-            }
-            write!(f, "\n")?;
+        Self {
+            cells: a,
+            selected_cell: (0, 0),
+            dirty: false,
         }
-        f.flush()?;
-
-        self.dirty = false;
-        Ok(())
-    }
-
-    #[must_use]
-    pub fn max_y_at_x(&self, x: usize) -> usize {
-        let mut max_y = 0;
-        if let Some(col) = self.cells.get(x) {
-            // we could do fancy things like .take_while(not null) but then
-            // we would have to deal with empty cells and stuff, which sounds
-            // boring. This will be fast "enough", considering the grid is
-            // probably only like 1k cells
-            for (yi, cell) in col.iter().enumerate() {
-                if cell.is_some() {
-                    if yi > max_y {
-                        max_y = yi
-                    }
-                }
-            }
-        }
-
-        max_y
-    }
-
-    /// Iterate over the entire grid and see where
-    /// the farthest modified cell is.
-    #[must_use]
-    fn max(&self) -> (usize, usize) {
-        let mut max_x = 0;
-        let mut max_y = 0;
-
-        for (xi, x) in self.cells.iter().enumerate() {
-            for (yi, cell) in x.iter().enumerate() {
-                if cell.is_some() {
-                    if yi > max_y {
-                        max_y = yi
-                    }
-                    if xi > max_x {
-                        max_x = xi
-                    }
-                }
-            }
-        }
-
-        (max_x, max_y)
     }
 
     pub fn new_from_file(path: impl Into<PathBuf>) -> std::io::Result<Self> {
@@ -184,6 +74,64 @@ impl Grid {
         grid.dirty = false;
 
         Ok(grid)
+    }
+
+    /// Save file to `path` as a csv. Path with have `csv` appended to it if it
+    /// does not already have the extension.
+    pub fn save_to(&mut self, path: impl Into<PathBuf>) -> std::io::Result<()> {
+        let mut path = path.into();
+
+        const CSV: &str = "csv";
+        const CUSTOM_EXT: &str = "nscim";
+
+        let resolve_values;
+
+        match path.extension() {
+            Some(ext) => match ext.to_str() {
+                Some(CSV) => {
+                    resolve_values = true;
+                }
+                _ => {
+                    resolve_values = false;
+                    path.add_extension(CUSTOM_EXT);
+                }
+            },
+            None => {
+                resolve_values = false;
+                path.add_extension(CUSTOM_EXT);
+            }
+        }
+
+        let mut f = fs::OpenOptions::new().write(true).append(false).truncate(true).create(true).open(path)?;
+        let (mx, my) = self.max();
+        for y in 0..=my {
+            for x in 0..=mx {
+                let cell = &self.cells[x][y];
+
+                let data = if let Some(cell) = cell {
+                    if let Ok(val) = self.evaluate(&cell.to_string())
+                        && resolve_values
+                    {
+                        val.to_string()
+                    } else {
+                        cell.to_string_csv_escaped()
+                    }
+                } else {
+                    CSV_DELIMITER.to_string()
+                };
+
+                write!(f, "{data}")?;
+            }
+            write!(f, "\n")?;
+        }
+        f.flush()?;
+
+        self.dirty = false;
+        Ok(())
+    }
+
+    pub fn needs_to_be_saved(&self) -> bool {
+        self.dirty
     }
 
     fn parse_csv_line(line: &str) -> Vec<Option<String>> {
@@ -261,21 +209,73 @@ impl Grid {
         cells
     }
 
-    pub fn new() -> Self {
-        let mut a = Vec::with_capacity(LEN);
-        for _ in 0..LEN {
-            let mut b = Vec::with_capacity(LEN);
-            for _ in 0..LEN {
-                b.push(None)
+    pub fn cursor(&self) -> (usize, usize) {
+        self.selected_cell
+    }
+
+    pub fn mv_cursor_to(&mut self, x: usize, y: usize) {
+        self.selected_cell = (x, y)
+    }
+
+    pub fn apply_momentum(&mut self, (x, y): (i32, i32)) {
+        let (cx, cy) = self.cursor();
+
+        assert_eq!(0i32.saturating_add(-1), -1);
+        let x = (cx as i32).saturating_add(x);
+        let y = (cy as i32).saturating_add(y);
+
+        // make it positive
+        let x = max(x, 0) as usize;
+        let y = max(y, 0) as usize;
+
+        // keep it in the grid
+        let x = min(x, LEN - 1);
+        let y = min(y, LEN - 1);
+
+        self.mv_cursor_to(x, y);
+    }
+
+    /// Iterate over the entire grid and see where
+    /// the farthest modified cell is.
+    #[must_use]
+    fn max(&self) -> (usize, usize) {
+        let mut max_x = 0;
+        let mut max_y = 0;
+
+        for (xi, x) in self.cells.iter().enumerate() {
+            for (yi, cell) in x.iter().enumerate() {
+                if cell.is_some() {
+                    if yi > max_y {
+                        max_y = yi
+                    }
+                    if xi > max_x {
+                        max_x = xi
+                    }
+                }
             }
-            a.push(b)
         }
 
-        Self {
-            cells: a,
-            selected_cell: (0, 0),
-            dirty: false,
+        (max_x, max_y)
+    }
+
+    #[must_use]
+    pub fn max_y_at_x(&self, x: usize) -> usize {
+        let mut max_y = 0;
+        if let Some(col) = self.cells.get(x) {
+            // we could do fancy things like .take_while(not null) but then
+            // we would have to deal with empty cells and stuff, which sounds
+            // boring. This will be fast "enough", considering the grid is
+            // probably only like 1k cells
+            for (yi, cell) in col.iter().enumerate() {
+                if cell.is_some() {
+                    if yi > max_y {
+                        max_y = yi
+                    }
+                }
+            }
         }
+
+        max_y
     }
 
     /// Only evaluates equations, such as `=10` or `=A1/C2`, not
@@ -402,65 +402,6 @@ impl Grid {
 impl Default for Grid {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum CellType {
-    Number(f64),
-    String(String),
-    Equation(String),
-}
-
-impl Into<CellType> for f64 {
-    fn into(self) -> CellType {
-        CellType::duck_type(self.to_string())
-    }
-}
-
-impl Into<CellType> for String {
-    fn into(self) -> CellType {
-        CellType::duck_type(self)
-    }
-}
-
-impl CellType {
-    fn to_string_csv_escaped(&self) -> String {
-        let mut display = self.to_string();
-
-        // escape quotes " -> ""
-        let needs_escaping = display.char_indices().filter(|f| f.1 == CSV_ESCAPE).map(|f| f.0).collect::<Vec<usize>>();
-        for idx in needs_escaping.iter().rev() {
-            display.insert(*idx, CSV_ESCAPE);
-        }
-
-        // escape string of it has a comma
-        if display.contains(CSV_DELIMITER) {
-            format!("\"{display}\"{CSV_DELIMITER}")
-        } else {
-            format!("{display}{CSV_DELIMITER}")
-        }
-    }
-
-    fn duck_type<'a>(value: impl Into<String>) -> Self {
-        let value = value.into();
-
-        if let Ok(parse) = value.parse::<f64>() {
-            Self::Number(parse)
-        } else {
-            if value.starts_with('=') { Self::Equation(value) } else { Self::String(value) }
-        }
-    }
-}
-
-impl Display for CellType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let d = match self {
-            CellType::Number(n) => n.to_string(),
-            CellType::String(n) => n.to_owned(),
-            CellType::Equation(r) => r.to_owned(),
-        };
-        write!(f, "{d}")
     }
 }
 

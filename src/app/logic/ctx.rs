@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use evalexpr::{error::EvalexprResultValue, *};
 
-use crate::app::logic::calc::{CellType, Grid};
+use crate::app::logic::{calc::Grid, cell::CellType};
 
 pub struct CallbackContext<'a> {
     variables: &'a Grid,
@@ -155,9 +155,9 @@ impl<'a> Context for CallbackContext<'a> {
 
         if let Some(v) = self.variables.get_cell(identifier) {
             match v {
-                super::calc::CellType::Number(n) => return Some(Value::Float(n.to_owned())),
-                super::calc::CellType::String(s) => return Some(Value::String(s.to_owned())),
-                super::calc::CellType::Equation(eq) => {
+                    CellType::Number(n) => return Some(Value::Float(n.to_owned())),
+                    CellType::String(s) => return Some(Value::String(s.to_owned())),
+                    CellType::Equation(eq) => {
                     if let Ok(mut depth) = self.eval_depth.write() {
                         *depth += 1;
                         if *depth > RECURSION_DEPTH_LIMIT {
