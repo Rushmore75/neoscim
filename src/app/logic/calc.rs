@@ -311,7 +311,7 @@ impl Grid {
 
     /// Parse values in the format of A0, C10 ZZ99, etc, and
     /// turn them into an X,Y index.
-    fn parse_to_idx(i: &str) -> Option<(usize, usize)> {
+    pub fn parse_to_idx(i: &str) -> Option<(usize, usize)> {
         let chars = i.chars().take_while(|c| c.is_alphabetic()).collect::<Vec<char>>();
         let nums = i.chars().skip(chars.len()).take_while(|c| c.is_numeric()).collect::<String>();
 

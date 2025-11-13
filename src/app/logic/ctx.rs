@@ -112,7 +112,6 @@ impl<'a> CallbackContext<'a> {
                         let lookup_value = &args[1];
                         let return_array = &args[2];
 
-
                         if lookup_array.is_tuple() && return_array.is_tuple() {
                             let mut found_at = None;
                             for (i, val) in lookup_array.as_tuple()?.iter().enumerate() {
@@ -236,6 +235,73 @@ impl<'a> Context for CallbackContext<'a> {
 
     fn set_builtin_functions_disabled(&mut self, disabled: bool) -> EvalexprResult<(), Self::NumericTypes> {
         self.without_builtin_functions = disabled;
+        Ok(())
+    }
+}
+
+
+
+/// DOES NOT EVALUATE EQUATIONS!!
+/// 
+/// This is used as a pseudo-context, just used for
+/// learning all the variables in an expression.
+#[derive(Debug)]
+pub struct ExtractionContext {
+    var_registry: RwLock<Vec<String>>,
+    fn_registry: RwLock<Vec<String>>,
+}
+
+impl ExtractionContext {
+    pub fn new() -> Self {
+        Self {
+            var_registry: RwLock::new(Vec::new()),
+            fn_registry: RwLock::new(Vec::new()),
+        }
+    }
+    pub fn dump_vars(&self) -> Vec<String> {
+        if let Ok(r) = self.var_registry.read() {
+            r.clone()
+        } else {
+            Vec::new()
+        }
+    }
+    pub fn dump_fns(&self) -> Vec<String> {
+        if let Ok(r) = self.fn_registry.read() {
+            r.clone()
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+impl Context for ExtractionContext {
+    type NumericTypes = DefaultNumericTypes;
+
+    fn get_value(&self, identifier: &str) -> Option<Value<Self::NumericTypes>> {
+        if let Ok(mut registry) = self.var_registry.write() {
+            registry.push(identifier.to_owned());
+        }
+        None
+    }
+
+    fn call_function(
+        &self,
+        identifier: &str,
+        argument: &Value<Self::NumericTypes>,
+    ) -> EvalexprResultValue<Self::NumericTypes> {
+        let _ = argument;
+        if let Ok(mut registry) = self.fn_registry.write() {
+            registry.push(identifier.to_owned())
+        }
+        Ok(Value::Empty)
+    }
+
+    fn are_builtin_functions_disabled(&self) -> bool {
+        false
+    }
+
+    fn set_builtin_functions_disabled(&mut self, disabled: bool) -> EvalexprResult<(), Self::NumericTypes> {
+        let _ = disabled;
         Ok(())
     }
 }

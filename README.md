@@ -38,7 +38,8 @@ if value.can_be_a_number() {
 | `:` | Enter command mode |
 | `yy` | Yank current cell |
 | `d `/`dw` | Cut current cell |
-| `p` | Paste clipboard (cursor is top-left of multi-cell pastes) |
+| `p` | Paste clipboard (cursor is top-left of multi-cell pastes). Automatically translates cell references |
+| `gp` | Paste clipboard, no reference translation |
 | `zz` | Center grid on cursor |
 | `m`X | Mark cell "X" |
 | `'`X | Jump to cell "X" |

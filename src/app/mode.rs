@@ -167,7 +167,7 @@ impl Mode {
                     'v' => app.mode = Mode::Visual(app.grid.cursor()),
                     ':' => app.mode = Mode::Command(Chord::new(':')),
                     'p' => {
-                        app.clipboard.paste(&mut app.grid);
+                        app.clipboard.paste(&mut app.grid, true);
                         app.grid.apply_momentum(app.clipboard.momentum());
                         return;
                     }
@@ -263,6 +263,14 @@ impl Mode {
                                 app.clipboard.clipboard_copy(point, point, &app.grid);
                                 app.mode = Mode::Normal;
                                 app.msg = StatusMessage::info("Yanked 1 cell");
+                            }
+                            ("g", 'p') => {
+                                app.clipboard.paste(&mut app.grid, false);
+                                app.grid.apply_momentum(app.clipboard.momentum());
+                                app.mode = Mode::Normal;
+                                let plural = if app.clipboard.qty() > 1 {"cells"} else {"cell"};
+                                app.msg = StatusMessage::info(format!("Pasted {plural}, no formatting"));
+                        return;
                             }
                             _ => {}
                         }

@@ -1,14 +1,24 @@
-use crate::app::logic::calc::{CellType, Grid};
+use std::cmp::min;
+
+use evalexpr::eval_with_context;
+
+use crate::app::logic::{
+    calc::{CellType, Grid},
+    ctx::ExtractionContext,
+};
 
 #[cfg(test)]
 use crate::app::{
-    app::App, mode::{Chord, Mode}
+    app::App,
+    mode::{Chord, Mode},
 };
 
 pub struct Clipboard {
     // could this just be a grid?
     clipboard: Vec<Vec<Option<CellType>>>,
-    // top_left_cell: (usize, usize),
+    /// For calculating variable translation
+    source_cell: (usize, usize),
+    /// For tracking momentum direction
     last_paste_cell: (usize, usize),
     momentum: (i32, i32),
 }
@@ -19,6 +29,7 @@ impl Clipboard {
             clipboard: Vec::new(),
             last_paste_cell: (0, 0),
             momentum: (0, 1),
+            source_cell: (0, 0),
         }
     }
 
@@ -29,29 +40,71 @@ impl Clipboard {
         let x_len = self.clipboard.len();
         let y_len = self.clipboard[0].len();
 
-        x_len*y_len
+        x_len * y_len
     }
 
-    /// After pasting you gain momentum which can be used to 
+    /// After pasting you gain momentum which can be used to
     /// to move the cursor in the same direction for the next
     /// paste.
     pub fn momentum(&self) -> (i32, i32) {
         let (x, y) = self.momentum;
         // prevent diagonal momentum
-        if y != 0 {
-            (0, y)
-        } else {
-            (x,0)
-        }
+        if y != 0 { (0, y) } else { (x, 0) }
     }
 
-    pub fn paste(&mut self, into: &mut Grid) {
+    pub fn paste(&mut self, into: &mut Grid, translate: bool) {
         // cursor
         let (cx, cy) = into.cursor();
 
         for (x, row) in self.clipboard.iter().enumerate() {
             for (y, cell) in row.iter().enumerate() {
-                into.set_cell_raw((x + cx, y + cy), cell.clone());
+                let idx = (x + cx, y + cy);
+
+                if translate {
+                    if let Some(cell) = cell {
+                        match cell {
+                            // don't translate non-equations
+                            CellType::Number(_) | CellType::String(_) => into.set_cell_raw(idx, Some(cell.clone())),
+                            CellType::Equation(eq) => {
+                                // extract all the variables
+                                let ctx = ExtractionContext::new();
+                                let _ = eval_with_context(eq, &ctx);
+
+                                let mut rolling = eq.clone();
+                                // translate standard vars A0 -> A1
+                                for old_var in ctx.dump_vars() {
+                                    if let Some((src_x, src_y)) = Grid::parse_to_idx(&old_var) {
+                                        let (x1, y1) = self.source_cell;
+                                        let x1 = x1 as i32;
+                                        let y1 = y1 as i32;
+                                        let (x2, y2) = into.cursor();
+                                        let x2 = x2 as i32;
+                                        let y2 = y2 as i32;
+
+                                        let dest_x = (src_x as i32 + (x2 - x1)) as usize;
+                                        let dest_y = (src_y as i32 + (y2 - y1)) as usize;
+
+                                        let alpha = Grid::num_to_char(dest_x);
+                                        let alpha = alpha.trim();
+                                        let new_var = format!("{alpha}{dest_y}");
+
+                                        // swap out vars
+                                        rolling = rolling.replace(&old_var, &new_var);
+                                    } else {
+                                        // why you coping invalid stuff, nerd?
+                                    }
+                                }
+                                into.set_cell_raw(idx, Some(rolling));
+                            }
+                        }
+                    } else {
+                        // cell doesn't exist, no need to translate
+                        into.set_cell_raw::<CellType>(idx, None);
+                    }
+                } else {
+                    // translate = false
+                    into.set_cell_raw::<CellType>(idx, cell.clone());
+                }
             }
         }
 
@@ -69,6 +122,8 @@ impl Clipboard {
 
         let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
         let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
+
+        self.source_cell = (low_x, low_y);
 
         // size the clipboard appropriately
         self.clipboard.clear();
@@ -99,7 +154,7 @@ impl Clipboard {
             for y in low_y..=hi_y {
                 let a = from.get_cell_raw(x, y);
                 col.push(a.clone());
-                from.set_cell_raw::<CellType>((x,y), None);
+                from.set_cell_raw::<CellType>((x, y), None);
             }
             self.clipboard.push(col);
         }
@@ -142,7 +197,7 @@ fn momentum_y_pos() {
     app.grid.mv_cursor_to(0, 1);
     Mode::process_key(&mut app, 'p');
 
-    assert_eq!(app.clipboard.momentum(), (0,1));
+    assert_eq!(app.clipboard.momentum(), (0, 1));
 }
 
 #[test]
@@ -159,7 +214,7 @@ fn momentum_y_neg() {
     app.grid.mv_cursor_to(0, 0);
     Mode::process_key(&mut app, 'p');
 
-    assert_eq!(app.clipboard.momentum(), (0,-1));
+    assert_eq!(app.clipboard.momentum(), (0, -1));
 }
 
 #[test]
@@ -176,7 +231,7 @@ fn momentum_x_pos() {
     app.grid.mv_cursor_to(1, 0);
     Mode::process_key(&mut app, 'p');
 
-    assert_eq!(app.clipboard.momentum(), (1,0));
+    assert_eq!(app.clipboard.momentum(), (1, 0));
 }
 
 #[test]
@@ -193,7 +248,7 @@ fn momentum_x_neg() {
     app.grid.mv_cursor_to(0, 0);
     Mode::process_key(&mut app, 'p');
 
-    assert_eq!(app.clipboard.momentum(), (-1,0));
+    assert_eq!(app.clipboard.momentum(), (-1, 0));
 }
 
 #[test]
@@ -211,10 +266,73 @@ fn diagonal_momentum() {
     assert_eq!(app.grid.cursor(), (1, 0));
     Mode::process_key(&mut app, 'p');
 
-    assert_eq!(app.clipboard.momentum(), (0,-1));
+    assert_eq!(app.clipboard.momentum(), (0, -1));
     assert_eq!(app.grid.cursor(), (1, 0));
 
     app.grid.apply_momentum(app.clipboard.momentum());
 
-    assert_eq!(app.grid.cursor(), (1,0));
+    assert_eq!(app.grid.cursor(), (1, 0));
+}
+
+#[test]
+fn copy_paste_vars_translate() {
+    let mut app = App::new();
+
+    //  Translate Right ====================================================
+    // A0 = A1 = 1
+    app.grid.set_cell("A0", "=A1".to_string());
+    app.grid.set_cell("A1", 1.);
+
+    // Copy A0
+    app.grid.mv_cursor_to(0, 0);
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+
+    assert!(app.clipboard.clipboard[0][0].as_ref().is_some_and(|c| c.to_string() == "=A1"));
+
+    // Move cursor to B0
+    app.grid.mv_cursor_to(1, 0);
+    Mode::process_key(&mut app, 'p');
+
+    let a = app.grid.get_cell("B0").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.to_string(), "=B1");
+
+    // Translate Left ====================================================
+    // Copy B0
+    app.grid.mv_cursor_to(1, 0);
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+
+    // Move cursor to A0
+    app.grid.mv_cursor_to(0, 0);
+    Mode::process_key(&mut app, 'p');
+
+    let a = app.grid.get_cell("A0").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.to_string(), "=A1");
+
+    // Translate Down ====================================================
+    // Copy A0
+    app.grid.mv_cursor_to(0, 0);
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+
+    // Move cursor to A0
+    app.grid.mv_cursor_to(0, 1);
+    Mode::process_key(&mut app, 'p');
+
+    let a = app.grid.get_cell("A1").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.to_string(), "=A2");
+
+    // Translate Up ====================================================
+    // Copy A1
+    app.grid.mv_cursor_to(0, 1);
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+
+    // Move cursor to A0
+    app.grid.mv_cursor_to(0, 0);
+    Mode::process_key(&mut app, 'p');
+
+    let a = app.grid.get_cell("A0").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.to_string(), "=A1");
 }
