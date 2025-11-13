@@ -1,24 +1,13 @@
 use std::{
-    cmp::{max, min},
-    collections::HashMap,
-    io,
-    path::PathBuf,
+    cmp::{max, min}, collections::HashMap, io, path::PathBuf
 };
 
 use ratatui::{
-    DefaultTerminal, Frame,
-    crossterm::event,
-    layout::{self, Constraint, Layout, Rect},
-    prelude,
-    style::{Color, Modifier, Style},
-    widgets::{Paragraph, Widget},
+    DefaultTerminal, Frame, crossterm::event, layout::{self, Constraint, Layout, Rect}, prelude, style::{Color, Modifier, Style}, widgets::{Paragraph, Widget}
 };
 
 use crate::app::{
-    error_msg::ErrorMessage,
-    logic::calc::{CellType, Grid},
-    mode::Mode,
-    screen::ScreenSpace,
+    clipboard::Clipboard, error_msg::ErrorMessage, logic::calc::{CellType, Grid}, mode::Mode, screen::ScreenSpace
 };
 
 pub struct App {
@@ -31,6 +20,7 @@ pub struct App {
     pub screen: ScreenSpace,
     // this could probably be a normal array
     pub marks: HashMap<char, (usize, usize)>,
+    pub clipboard: Clipboard,
 }
 
 impl Widget for &App {
@@ -39,7 +29,7 @@ impl Widget for &App {
 
         let is_selected = |x: usize, y: usize| -> bool {
             if let Mode::Visual((mut x1, mut y1)) = self.mode {
-                let (mut x2, mut y2) = self.grid.selected_cell;
+                let (mut x2, mut y2) = self.grid.cursor();
                 x1 += 1;
                 y1 += 1;
                 x2 += 1;
@@ -96,7 +86,7 @@ impl Widget for &App {
                     (true, false) => {
                         display = y_idx.to_string();
 
-                        let bg = if y_idx == self.grid.selected_cell.1 {
+                        let bg = if y_idx == self.grid.cursor().1 {
                             Color::DarkGray
                         } else if y_idx % 2 == 0 {
                             ORANGE1
@@ -109,7 +99,7 @@ impl Widget for &App {
                     (false, true) => {
                         display = Grid::num_to_char(x_idx);
 
-                        let bg = if x_idx == self.grid.selected_cell.0 {
+                        let bg = if x_idx == self.grid.cursor().0 {
                             Color::DarkGray
                         } else if x_idx % 2 == 0 {
                             ORANGE1
@@ -157,7 +147,7 @@ impl Widget for &App {
                             }
                             None => should_render = false,
                         }
-                        if (x_idx, y_idx) == self.grid.selected_cell {
+                        if (x_idx, y_idx) == self.grid.cursor() {
                             should_render = true;
                             style = Style::new().fg(Color::Black).bg(Color::White);
                             // modify the style of the cell you are editing
@@ -201,6 +191,7 @@ impl App {
             vars: HashMap::new(),
             screen: ScreenSpace::new(),
             marks: HashMap::new(),
+            clipboard: Clipboard::new(),
         }
     }
 
@@ -231,7 +222,7 @@ impl App {
         let len = match &self.mode {
             Mode::Insert(edit) | Mode::Command(edit) | Mode::Chord(edit) => edit.len(),
             Mode::Normal => {
-                let (x, y) = self.grid.selected_cell;
+                let (x, y) = self.grid.cursor();
                 let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string().len()).unwrap_or_default();
                 cell
             }
@@ -259,7 +250,7 @@ impl App {
             Mode::Chord(chord) => frame.render_widget(chord, cmd_line_left),
             Mode::Normal => frame.render_widget(
                 Paragraph::new({
-                    let (x, y) = self.grid.selected_cell;
+                    let (x, y) = self.grid.cursor();
                     let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or_default();
                     cell
                 }),
@@ -274,7 +265,7 @@ impl App {
         frame.render_widget(
             Paragraph::new(format!(
                 "x/w y/h: cursor{:?} scroll({}, {}) cell({}, {}) screen({}, {}) len{len}",
-                self.grid.selected_cell,
+                self.grid.cursor(),
                 self.screen.scroll_x(),
                 self.screen.scroll_y(),
                 self.screen.get_cell_width(&self.vars),
@@ -312,13 +303,13 @@ impl App {
 
                         // try to insert as a float
                         if let Ok(v) = v.parse::<f64>() {
-                            self.grid.set_cell_raw(self.grid.selected_cell, Some(v));
+                            self.grid.set_cell_raw(self.grid.cursor(), Some(v));
                         } else {
                             // if you can't, then insert as a string
                             if !v.is_empty() {
-                                self.grid.set_cell_raw(self.grid.selected_cell, Some(v));
+                                self.grid.set_cell_raw(self.grid.cursor(), Some(v));
                             } else {
-                                self.grid.set_cell_raw::<CellType>(self.grid.selected_cell, None);
+                                self.grid.set_cell_raw::<CellType>(self.grid.cursor(), None);
                             }
                         }
 
@@ -378,7 +369,7 @@ impl App {
         }
 
         // make sure cursor is inside window
-        self.screen.scroll_based_on_cursor_location(self.grid.selected_cell, &self.vars);
+        self.screen.scroll_based_on_cursor_location(self.grid.cursor(), &self.vars);
 
         Ok(())
     }

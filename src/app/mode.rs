@@ -116,31 +116,36 @@ impl Mode {
                 match key {
                     // <
                     'h' => {
-                        app.grid.selected_cell.0 = app.grid.selected_cell.0.saturating_sub(1);
+                        let (x, y) = app.grid.cursor();
+                        app.grid.mv_cursor_to(x.saturating_sub(1), y);
                         return;
                     }
                     // v
                     'j' => {
-                        app.grid.selected_cell.1 = min(app.grid.selected_cell.1.saturating_add(1), LEN - 1);
+                        let (x, y) = app.grid.cursor();
+                        app.grid.mv_cursor_to(x, min(y.saturating_add(1), LEN - 1));
                         return;
                     }
                     // ^
                     'k' => {
-                        app.grid.selected_cell.1 = app.grid.selected_cell.1.saturating_sub(1);
+                        let (x, y) = app.grid.cursor();
+                        app.grid.mv_cursor_to(x, y.saturating_sub(1));
                         return;
                     }
                     // >
                     'l' => {
-                        app.grid.selected_cell.0 = min(app.grid.selected_cell.0.saturating_add(1), LEN - 1);
+                        let (x, y) = app.grid.cursor();
+                        app.grid.mv_cursor_to(min(x.saturating_add(1), LEN - 1), y);
                         return;
                     }
                     '0' => {
-                        app.grid.selected_cell.0 = 0;
+                        let (_, y) = app.grid.cursor();
+                        app.grid.mv_cursor_to(0, y);
                         return;
                     }
                     // edit cell
                     'i' | 'a' => {
-                        let (x, y) = app.grid.selected_cell;
+                        let (x, y) = app.grid.cursor();
 
                         let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or(String::new());
 
@@ -154,8 +159,15 @@ impl Mode {
                     'A' => { /* insert col after */ }
                     'o' => { /* insert row below */ }
                     'O' => { /* insert row above */ }
-                    'v' => app.mode = Mode::Visual(app.grid.selected_cell),
+                    'v' => app.mode = Mode::Visual(app.grid.cursor()),
                     ':' => app.mode = Mode::Command(Chord::new(':')),
+                    'p' => {
+                        app.clipboard.paste(&mut app.grid);
+                        let (cx, cy) = app.grid.cursor();
+                        let (mx, my) = app.clipboard.momentum();
+                        app.grid.mv_cursor_to((cx as i32 + mx) as usize, (cy as i32 + my) as usize);
+                        return;
+                    }
                     // loose chars will put you into chord mode
                     c => {
                         if let Mode::Normal = app.mode {
@@ -165,18 +177,24 @@ impl Mode {
                 }
                 if let Mode::Visual((x1, y1)) = app.mode {
                     // TODO visual copy, paste, etc
-                    let (x2, y2) = app.grid.selected_cell;
+                    let (x2, y2) = app.grid.cursor();
 
                     let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
                     let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
 
-                    if key == 'd' {
-                        for x in low_x..=hi_x {
-                            for y in low_y..=hi_y {
-                                app.grid.set_cell_raw::<CellType>((x, y), None);
+                    match key {
+                        'd' => {
+                            for x in low_x..=hi_x {
+                                for y in low_y..=hi_y {
+                                    app.grid.set_cell_raw::<CellType>((x, y), None);
+                                }
                             }
+                            app.mode = Mode::Normal
                         }
-                        app.mode = Mode::Normal
+                        'y' => {
+                            app.clipboard.clipboard_copy((x1, y1), (x2, y2), &app.grid);
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -194,8 +212,8 @@ impl Mode {
                     // For chords that can take a numeric input
                     Ok(num) => match key {
                         'G' => {
-                            let sel = app.grid.selected_cell;
-                            app.grid.selected_cell = (sel.0, num);
+                            let (x, _) = app.grid.cursor();
+                            app.grid.mv_cursor_to(x, num);
                             app.mode = Mode::Normal;
                         }
                         _ => {
@@ -210,34 +228,41 @@ impl Mode {
                     Err(_) => {
                         let c = chord.as_string();
                         // match everything up to, and then the new key
-                        match (&c[..c.len()-1], key) {
+                        match (&c[..c.len() - 1], key) {
                             // delete cell under cursor
                             ("d", ' ') | ("d", 'w') => {
-                                let loc = app.grid.selected_cell;
+                                let loc = app.grid.cursor();
                                 app.grid.set_cell_raw::<CellType>(loc, None);
                                 app.mode = Mode::Normal;
                             }
                             // go to top of row
                             ("g", 'g') => {
-                                app.grid.selected_cell.1 = 0;
+                                let (x, _) = app.grid.cursor();
+                                app.grid.mv_cursor_to(x, 0);
                                 app.mode = Mode::Normal;
                             }
                             // center screen to cursor
                             ("z", 'z') => {
-                                app.screen.center_x(app.grid.selected_cell, &app.vars);
-                                app.screen.center_y(app.grid.selected_cell, &app.vars);
+                                app.screen.center_x(app.grid.cursor(), &app.vars);
+                                app.screen.center_y(app.grid.cursor(), &app.vars);
                                 app.mode = Mode::Normal;
                             }
                             // mark cell
                             ("m", i) => {
-                                app.marks.insert(i, app.grid.selected_cell);
+                                app.marks.insert(i, app.grid.cursor());
                                 app.mode = Mode::Normal;
                             }
                             // goto marked cell
                             ("'", i) => {
-                                if let Some(coords) = app.marks.get(&i) {
-                                    app.grid.selected_cell = *coords;
+                                if let Some((cx, cy)) = app.marks.get(&i) {
+                                    app.grid.mv_cursor_to(*cx, *cy);
                                 }
+                                app.mode = Mode::Normal;
+                            }
+                            // copy 1 cell
+                            ("y", 'y') => {
+                                let point = app.grid.cursor();
+                                app.clipboard.clipboard_copy(point, point, &app.grid);
                                 app.mode = Mode::Normal;
                             }
                             _ => {}
@@ -296,30 +321,46 @@ impl Widget for &Chord {
 }
 
 #[test]
+fn movement_keybinds() {
+    let mut app = App::new();
+
+    assert_eq!(app.grid.cursor(), (0, 0));
+    Mode::process_key(&mut app, 'j');
+    assert_eq!(app.grid.cursor(), (0, 1));
+
+    Mode::process_key(&mut app, 'l');
+    assert_eq!(app.grid.cursor(), (1, 1));
+
+    Mode::process_key(&mut app, 'k');
+    assert_eq!(app.grid.cursor(), (1, 0));
+
+    Mode::process_key(&mut app, 'h');
+    assert_eq!(app.grid.cursor(), (0, 0));
+}
+
+#[test]
 fn keybinds() {
     let mut app = App::new();
 
-    assert_eq!(app.grid.selected_cell, (0,0));
-
     // start at B1
-    app.grid.selected_cell = (1,1);
-    assert_eq!(app.grid.selected_cell, (1,1));
+    app.grid.mv_cursor_to(1, 1);
+    assert_eq!(app.grid.cursor(), (1, 1));
 
     // gg
     app.mode = Mode::Chord(Chord::new('g'));
     Mode::process_key(&mut app, 'g');
-    assert_eq!(app.grid.selected_cell, (1,0));
+    assert_eq!(app.grid.cursor(), (1, 0));
 
     // 0
     app.mode = Mode::Normal;
     Mode::process_key(&mut app, '0');
-    assert_eq!(app.grid.selected_cell, (0,0));
+    assert_eq!(app.grid.cursor(), (0, 0));
 
     // 10l
     // this should mean all the directions work
-    app.grid.selected_cell = (0,0);
+    app.grid.mv_cursor_to(0, 0);
     app.mode = Mode::Chord(Chord::new('1'));
     Mode::process_key(&mut app, '0');
     Mode::process_key(&mut app, 'l');
-    assert_eq!(app.grid.selected_cell, (10,0));
+    assert_eq!(app.grid.cursor(), (10, 0));
 }

@@ -7,7 +7,7 @@ use std::{
 
 use evalexpr::*;
 
-use crate::app::logic::ctx;
+use crate::app::{app::App, logic::ctx};
 
 pub const LEN: usize = 1000;
 
@@ -19,7 +19,7 @@ pub struct Grid {
     // ...
     cells: Vec<Vec<Option<CellType>>>,
     /// (X, Y)
-    pub selected_cell: (usize, usize),
+    selected_cell: (usize, usize),
     /// Have unsaved modifications been made?
     dirty: bool,
 }
@@ -34,6 +34,14 @@ const CSV_DELIMITER: char = ',';
 const CSV_ESCAPE: char = '"';
 
 impl Grid {
+    pub fn cursor(&self) -> (usize, usize) {
+        self.selected_cell
+    }
+
+    pub fn mv_cursor_to(&mut self, x: usize, y: usize) {
+        self.selected_cell = (x,y)
+    }
+
     pub fn needs_to_be_saved(&self) -> bool {
         self.dirty
     }
@@ -311,7 +319,7 @@ impl Grid {
 
     /// Helper for tests
     #[cfg(test)]
-    fn set_cell<T: Into<CellType>>(&mut self, cell_id: &str, val: T) {
+    pub fn set_cell<T: Into<CellType>>(&mut self, cell_id: &str, val: T) {
         if let Some(loc) = Self::parse_to_idx(cell_id) {
             self.set_cell_raw(loc, Some(val));
         }
@@ -365,7 +373,7 @@ impl Default for Grid {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CellType {
     Number(f64),
     String(String),
@@ -710,5 +718,16 @@ fn ranges() {
 #[test]
 fn recursive_ranges() {
     // recursive ranges causes weird behavior
-    todo!();
+    // todo!();
+}
+
+#[test]
+fn cursor_fns() {
+    // surprisingly, this test was needed
+    let mut app = App::new();
+    let c = app.grid.cursor();
+    assert_eq!(c, (0,0));
+
+    app.grid.mv_cursor_to(1, 0);
+    assert_eq!(app.grid.cursor(), (1,0));
 }
