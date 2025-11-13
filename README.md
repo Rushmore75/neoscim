@@ -22,6 +22,48 @@ if value.can_be_a_number() {
 * Keybinds are closer to vim keying (i/a start inserting into a cell)
 
 
+## Keybinds
+
+### Normal mode
+
+| Key | Action |
+| - | - |
+| `j` | Move down |
+| `k` | Move up |
+| `h` | Move left |
+| `l` | Move right |
+| `0` | Go to beginning of row |
+| `gg` | Go to beginning of column |
+| `i`/`a` | Enter insert mode on current cell |
+| `r` | Enter insert mode on current cell, deleting contents |
+| `v` | Enter visual mode |
+| `:` | Enter command mode |
+| `yy` | Yank current cell |
+| `d `/`dw` | Cut current cell |
+| `p` | Paste clipboard (cursor is top-left of multi-cell pastes) |
+| `zz` | Center grid on cursor |
+| `m`X | Mark cell "X" |
+| `'`X | Jump to cell "X" |
+| n`G` | Jump to row "n" |
+| nX | Press "X", "n" times |
+
+### Visual mode
+
+| Key | Action |
+| - | - |
+| `y` | Yank selection (visual mode) |
+| `d`/`x` | Cut selection (visual mode) |
+
+### Commands
+
+| Command | Description |
+| - | - |
+| `:set <key>=<value>` | Sets `key` to `value`, currently supports `length` and `height` for changing cell size |
+| `:w` | Saves changes to file you opened |
+| `:w <file>` | Saves changes to `file`, setting it as the default file if there is not already one |
+| `:q` | Quit program |
+| `:q!` | Quit program, even if the file isn't saved |
+
 ## Math / Functions
 
 ### Math
@@ -92,7 +134,7 @@ if value.can_be_a_number() {
 | `shl`                 | 2               	| Int                           | Computes the given integer bitwise shifted left by the other given integer |
 | `shr`                 | 2               	| Int                           | Computes the given integer bitwise shifted right by the other given integer |
 
-> Cells are interchangeable with numbers, ex: `math::pow(A1,B1)` vs. `math::pow(1,2)`.
+> Cells are interchangeable with numbers, ex: `math::pow(A1,B1)` or `math::pow(1,2)`.
 
 > Any time a function takes a variable amount of inputs, a range can be specified: `avg(B:B)`.
 
