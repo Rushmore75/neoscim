@@ -83,6 +83,28 @@ impl Clipboard {
         }
         self.last_paste_cell = (low_x, low_y);
     }
+
+    pub fn clipboard_cut(&mut self, start: (usize, usize), end: (usize, usize), from: &mut Grid) {
+        let (x1, y1) = start;
+        let (x2, y2) = end;
+
+        let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
+        let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
+
+        // size the clipboard appropriately
+        self.clipboard.clear();
+        // clone data into clipboard
+        for x in low_x..=hi_x {
+            let mut col = Vec::new();
+            for y in low_y..=hi_y {
+                let a = from.get_cell_raw(x, y);
+                col.push(a.clone());
+                from.set_cell_raw::<CellType>((x,y), None);
+            }
+            self.clipboard.push(col);
+        }
+        self.last_paste_cell = (low_x, low_y);
+    }
 }
 
 #[test]

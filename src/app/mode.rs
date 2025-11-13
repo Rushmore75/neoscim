@@ -182,16 +182,9 @@ impl Mode {
                     // TODO visual copy, paste, etc
                     let (x2, y2) = app.grid.cursor();
 
-                    let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
-                    let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
-
                     match key {
-                        'd' => {
-                            for x in low_x..=hi_x {
-                                for y in low_y..=hi_y {
-                                    app.grid.set_cell_raw::<CellType>((x, y), None);
-                                }
-                            }
+                        'd' | 'x' => {
+                            app.clipboard.clipboard_cut((x1,y1), (x2,y2), &mut app.grid);
                             app.mode = Mode::Normal
                         }
                         'y' => {
@@ -237,7 +230,7 @@ impl Mode {
                             // delete cell under cursor
                             ("d", ' ') | ("d", 'w') => {
                                 let loc = app.grid.cursor();
-                                app.grid.set_cell_raw::<CellType>(loc, None);
+                                app.clipboard.clipboard_cut(loc, loc, &mut app.grid);
                                 app.mode = Mode::Normal;
                             }
                             // go to top of row
