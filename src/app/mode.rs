@@ -1,4 +1,4 @@
-use std::{cmp::min, fmt::Display};
+use std::{cmp::min, fmt::Display, path::PathBuf};
 
 use ratatui::{
     prelude,
@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::app::{
     app::App,
-    error_msg::ErrorMessage,
+    error_msg::StatusMessage,
     logic::calc::{CellType, LEN},
 };
 
@@ -60,29 +60,34 @@ impl Mode {
                     // first try the passed argument as file
                     if let Some(arg) = args.get(1) {
                         if let Err(e) = app.grid.save_to(arg) {
-                            app.error_msg = ErrorMessage::new(format!("{e}"));
+                            app.msg = StatusMessage::error(format!("{e}"));
                         } else {
                             // file saving was a success, adopt the provided file
                             // if we don't already have one (this is how vim works)
+                            let path: PathBuf = arg.into();
+                            app.msg = StatusMessage::info(format!("Saved file {}", path.file_name().map(|f| f.to_str().unwrap_or("n/a")).unwrap_or("n/a")));
+
                             if let None = app.file {
-                                app.file = Some(arg.into())
+                                app.file = Some(path)
                             }
                         }
                     // then try the file that we opened the program with
                     } else if let Some(file) = &app.file {
                         if let Err(e) = app.grid.save_to(file) {
-                            app.error_msg = ErrorMessage::new(format!("{e}"));
+                            app.msg = StatusMessage::error(format!("{e}"));
+                        } else {
+                            app.msg = StatusMessage::info(format!("Saved file {}", file.file_name().map(|f| f.to_str().unwrap_or("n/a")).unwrap_or("n/a")));
                         }
                     // you need to provide a file from *somewhere*
                     } else {
-                        app.error_msg = ErrorMessage::new("No file selected");
+                        app.msg = StatusMessage::error("No file selected");
                     }
                 }
                 // quit
                 "q" => {
                     if app.grid.needs_to_be_saved() {
                         app.exit = false;
-                        app.error_msg = ErrorMessage::new("File not saved");
+                        app.msg = StatusMessage::error("File not saved");
                     } else {
                         app.exit = true
                     }
@@ -95,7 +100,7 @@ impl Mode {
                     if let Some(arg) = args.get(1) {
                         let parts: Vec<&str> = arg.split('=').collect();
                         if parts.len() != 2 {
-                            app.error_msg = ErrorMessage::new("set <key>=<value>");
+                            app.msg = StatusMessage::error("set <key>=<value>");
                             return;
                         }
                         let key = parts[0];
@@ -103,7 +108,7 @@ impl Mode {
 
                         app.vars.insert(key.to_owned(), value.to_owned());
                     }
-                    app.error_msg = ErrorMessage::new("set <key>=<value>")
+                    app.msg = StatusMessage::error("set <key>=<value>")
                 }
                 _ => {}
             }
@@ -163,9 +168,7 @@ impl Mode {
                     ':' => app.mode = Mode::Command(Chord::new(':')),
                     'p' => {
                         app.clipboard.paste(&mut app.grid);
-                        let (cx, cy) = app.grid.cursor();
-                        let (mx, my) = app.clipboard.momentum();
-                        app.grid.mv_cursor_to((cx as i32 + mx) as usize, (cy as i32 + my) as usize);
+                        app.grid.apply_momentum(app.clipboard.momentum());
                         return;
                     }
                     // loose chars will put you into chord mode
@@ -193,6 +196,8 @@ impl Mode {
                         }
                         'y' => {
                             app.clipboard.clipboard_copy((x1, y1), (x2, y2), &app.grid);
+                            app.msg = StatusMessage::info(format!("Yanked {} cells", app.clipboard.qty()));
+                            app.mode = Mode::Normal
                         }
                         _ => {}
                     }
@@ -264,6 +269,7 @@ impl Mode {
                                 let point = app.grid.cursor();
                                 app.clipboard.clipboard_copy(point, point, &app.grid);
                                 app.mode = Mode::Normal;
+                                app.msg = StatusMessage::info("Yanked 1 cell");
                             }
                             _ => {}
                         }

@@ -1,5 +1,3 @@
-use std::cmp::{max, min};
-
 use crate::app::logic::calc::{CellType, Grid};
 
 #[cfg(test)]
@@ -24,18 +22,21 @@ impl Clipboard {
         }
     }
 
+    /// Panics if clipboard is 0 length (if you call after you
+    /// just filled it with anything you are gtg).
+    pub fn qty(&self) -> usize {
+        // it will be a square
+        let x_len = self.clipboard.len();
+        let y_len = self.clipboard[0].len();
+
+        x_len*y_len
+    }
+
     /// After pasting you gain momentum which can be used to 
     /// to move the cursor in the same direction for the next
     /// paste.
     pub fn momentum(&self) -> (i32, i32) {
-        // normalize to (-1,-1) to (1,1)
-        let (mx, my) = self.momentum;
-        let x = min(mx, 1);
-        let x = max(x, -1);
-
-        let y = min(my, 1);
-        let y = max(y, -1);
-
+        let (x, y) = self.momentum;
         // prevent diagonal momentum
         if y != 0 {
             (0, y)
@@ -171,4 +172,27 @@ fn momentum_x_neg() {
     Mode::process_key(&mut app, 'p');
 
     assert_eq!(app.clipboard.momentum(), (-1,0));
+}
+
+#[test]
+fn diagonal_momentum() {
+    let mut app = App::new();
+
+    app.grid.set_cell("A1", "hello".to_string());
+    app.grid.mv_cursor_to(0, 1);
+
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+    // yy will have set mode back to normal at this point
+
+    app.grid.mv_cursor_to(1, 0);
+    assert_eq!(app.grid.cursor(), (1, 0));
+    Mode::process_key(&mut app, 'p');
+
+    assert_eq!(app.clipboard.momentum(), (0,-1));
+    assert_eq!(app.grid.cursor(), (1, 0));
+
+    app.grid.apply_momentum(app.clipboard.momentum());
+
+    assert_eq!(app.grid.cursor(), (1,0));
 }

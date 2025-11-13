@@ -1,8 +1,5 @@
 use std::{
-    fmt::Display,
-    fs,
-    io::{Read, Write},
-    path::PathBuf,
+    cmp::{max, min}, fmt::Display, fs, io::{Read, Write}, path::PathBuf
 };
 
 use evalexpr::*;
@@ -36,6 +33,24 @@ const CSV_ESCAPE: char = '"';
 impl Grid {
     pub fn cursor(&self) -> (usize, usize) {
         self.selected_cell
+    }
+
+    pub fn apply_momentum(&mut self, (x, y): (i32, i32)) {
+        let (cx, cy) = self.cursor();
+
+        assert_eq!(0i32.saturating_add(-1), -1);
+        let x = (cx as i32).saturating_add(x);
+        let y = (cy as i32).saturating_add(y);
+
+        // make it positive
+        let x = max(x,0) as usize;
+        let y = max(y,0) as usize;
+
+        // keep it in the grid
+        let x = min(x, LEN-1);
+        let y = min(y, LEN-1);
+
+        self.mv_cursor_to(x, y);
     }
 
     pub fn mv_cursor_to(&mut self, x: usize, y: usize) {
@@ -718,7 +733,7 @@ fn ranges() {
 #[test]
 fn recursive_ranges() {
     // recursive ranges causes weird behavior
-    // todo!();
+    todo!();
 }
 
 #[test]

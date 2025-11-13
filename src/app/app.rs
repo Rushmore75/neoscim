@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::{
-    clipboard::Clipboard, error_msg::ErrorMessage, logic::calc::{CellType, Grid}, mode::Mode, screen::ScreenSpace
+    clipboard::Clipboard, error_msg::StatusMessage, logic::calc::{CellType, Grid}, mode::Mode, screen::ScreenSpace
 };
 
 pub struct App {
@@ -15,7 +15,7 @@ pub struct App {
     pub grid: Grid,
     pub mode: Mode,
     pub file: Option<PathBuf>,
-    pub error_msg: ErrorMessage,
+    pub msg: StatusMessage,
     pub vars: HashMap<String, String>,
     pub screen: ScreenSpace,
     // this could probably be a normal array
@@ -187,7 +187,7 @@ impl App {
             grid: Grid::new(),
             mode: Mode::Normal,
             file: None,
-            error_msg: ErrorMessage::none(),
+            msg: StatusMessage::none(),
             vars: HashMap::new(),
             screen: ScreenSpace::new(),
             marks: HashMap::new(),
@@ -260,7 +260,7 @@ impl App {
         }
 
         frame.render_widget(self, body);
-        frame.render_widget(&self.error_msg, cmd_line_right);
+        frame.render_widget(&self.msg, cmd_line_right);
         #[cfg(debug_assertions)]
         frame.render_widget(
             Paragraph::new(format!(
