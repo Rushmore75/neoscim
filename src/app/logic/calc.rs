@@ -936,3 +936,29 @@ fn insert_row_above_3() {
     let cell = grid.get_cell("B1").as_ref().expect("Just set it");
     assert_eq!(cell.to_string(), "=A1");
 }
+
+#[test]
+fn cell_eval_depth() {
+    use crate::app::mode::*;
+    let mut app= App::new();
+
+    app.grid.set_cell("A0", 1.);
+    app.grid.set_cell("A1", "=A0+$A$0".to_string());
+
+    app.grid.mv_cursor_to(0, 1);
+    app.mode = Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+    Mode::process_key(&mut app, 'j');
+    app.mode = Mode::Chord(Chord::new('5'));
+    Mode::process_key(&mut app, 'p');
+
+    assert_eq!(app.grid.cursor(), (0, 7));
+
+    let c = app.grid.get_cell("A6").as_ref().expect("Just set it");
+
+    assert_eq!(c.to_string(), "=A5+$A$0");
+
+    let res = app.grid.evaluate(&c.to_string()).expect("Should evaluate");
+    assert_eq!(res, 7.);
+}
+

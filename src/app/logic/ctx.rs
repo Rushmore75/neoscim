@@ -6,7 +6,8 @@ use crate::app::logic::{calc::Grid, cell::CellType};
 
 pub struct CallbackContext<'a> {
     variables: &'a Grid,
-    eval_depth: RwLock<usize>,
+    eval_breadcrumbs: RwLock<Vec<String>>,
+    compute_cache: RwLock<HashMap<String, Value>>,
     functions: HashMap<String, Function<DefaultNumericTypes>>,
 
     /// True if builtin functions are disabled.
@@ -139,10 +140,11 @@ impl<'a> CallbackContext<'a> {
 
     pub fn new(grid: &'a Grid) -> Self {
         Self {
-            eval_depth: RwLock::new(0),
             variables: grid,
             functions: Self::get_functions(),
             without_builtin_functions: false,
+            eval_breadcrumbs: RwLock::new(Vec::new()),
+            compute_cache: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -151,27 +153,46 @@ impl<'a> Context for CallbackContext<'a> {
     type NumericTypes = DefaultNumericTypes;
 
     fn get_value(&self, identifier: &str) -> Option<Value<Self::NumericTypes>> {
-        const RECURSION_DEPTH_LIMIT: usize = 20;
+        
+        // check cache
+        if let Ok(cc) = self.compute_cache.read() {
+            if let Some(hit) = cc.get(identifier) {
+                return Some(hit.clone());
+            }
+        }
+
+        if let Ok(mut trail) = self.eval_breadcrumbs.write() {
+            let find = trail.iter().filter(|id| *id == identifier).collect::<Vec<&String>>();
+            if find.len() > 0 {
+                // recursion detected
+                return None;
+            } else {
+                trail.push(identifier.to_owned(), );
+            }
+        }
+
+        let pre_return = |v: Value| {
+            if let Ok(mut cc) = self.compute_cache.write() {
+                cc.insert(identifier.to_owned(), v.clone());
+            }
+            Some(v)
+        };
 
         if let Some(v) = self.variables.get_cell(identifier) {
             match v {
-                    CellType::Number(n) => return Some(Value::Float(n.to_owned())),
-                    CellType::String(s) => return Some(Value::String(s.to_owned())),
-                    CellType::Equation(eq) => {
-                    if let Ok(mut depth) = self.eval_depth.write() {
-                        *depth += 1;
-                        if *depth > RECURSION_DEPTH_LIMIT {
-                            return None;
-                        }
-                    } else {
-                        // It would be unsafe to continue to process without knowing how
-                        // deep we've gone.
-                        return None;
-                    }
+                CellType::Number(n) => {
+                    return pre_return(Value::Float(n.to_owned()));
+                },
+                CellType::String(s) => {
+                    return pre_return(Value::String(s.to_owned()));
+                },
+                CellType::Equation(eq) => {
                     // remove the equals sign from the beginning, as that
                     // tries to set variables with our evaluation lib
                     match eval_with_context(&eq[1..], self) {
-                        Ok(e) => return Some(e),
+                        Ok(e) => {
+                            return pre_return(e)
+                        },
                         Err(e) => {
                             match e {
                                 EvalexprError::VariableIdentifierNotFound(_) => {
@@ -196,14 +217,6 @@ impl<'a> Context for CallbackContext<'a> {
                         CellType::Number(e) => vals.push(Value::Float(*e)),
                         CellType::String(s) => vals.push(Value::String(s.to_owned())),
                         CellType::Equation(eq) => {
-                            if let Ok(mut depth) = self.eval_depth.write() {
-                                *depth += 1;
-                                if *depth > RECURSION_DEPTH_LIMIT {
-                                    return None;
-                                }
-                            } else {
-                                return None;
-                            }
                             if let Ok(val) = eval_with_context(&eq[1..], self) {
                                 vals.push(val);
                             }
@@ -239,10 +252,8 @@ impl<'a> Context for CallbackContext<'a> {
     }
 }
 
-
-
 /// DOES NOT EVALUATE EQUATIONS!!
-/// 
+///
 /// This is used as a pseudo-context, just used for
 /// learning all the variables in an expression.
 #[derive(Debug)]
@@ -259,18 +270,10 @@ impl ExtractionContext {
         }
     }
     pub fn dump_vars(&self) -> Vec<String> {
-        if let Ok(r) = self.var_registry.read() {
-            r.clone()
-        } else {
-            Vec::new()
-        }
+        if let Ok(r) = self.var_registry.read() { r.clone() } else { Vec::new() }
     }
     pub fn dump_fns(&self) -> Vec<String> {
-        if let Ok(r) = self.fn_registry.read() {
-            r.clone()
-        } else {
-            Vec::new()
-        }
+        if let Ok(r) = self.fn_registry.read() { r.clone() } else { Vec::new() }
     }
 }
 
@@ -280,7 +283,9 @@ impl Context for ExtractionContext {
     fn get_value(&self, identifier: &str) -> Option<Value<Self::NumericTypes>> {
         if let Ok(mut registry) = self.var_registry.write() {
             registry.push(identifier.to_owned());
-        } else { panic!("The RwLock should always be write-able") }
+        } else {
+            panic!("The RwLock should always be write-able")
+        }
 
         Some(Value::Int(1))
     }
@@ -293,7 +298,9 @@ impl Context for ExtractionContext {
         let _ = argument;
         if let Ok(mut registry) = self.fn_registry.write() {
             registry.push(identifier.to_owned())
-        } else { panic!("The RwLock should always be write-able") }
+        } else {
+            panic!("The RwLock should always be write-able")
+        }
         // Ok(Value::Int(1))
         unimplemented!("Extracting function identifier not implemented yet")
     }
