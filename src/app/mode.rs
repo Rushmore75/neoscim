@@ -1,4 +1,8 @@
-use std::{cmp::{max, min}, fmt::Display, path::PathBuf};
+use std::{
+    cmp::{max, min},
+    fmt::Display,
+    path::PathBuf,
+};
 
 use ratatui::{
     prelude,
@@ -9,7 +13,10 @@ use ratatui::{
 use crate::app::{
     app::App,
     error_msg::StatusMessage,
-    logic::{calc::LEN, cell::CellType},
+    logic::{
+        calc::{CSV_EXT, CUSTOM_EXT, LEN},
+        cell::CellType,
+    },
 };
 
 pub enum Mode {
@@ -59,13 +66,32 @@ impl Mode {
                 "w" => {
                     // first try the passed argument as file
                     if let Some(arg) = args.get(1) {
-                        if let Err(e) = app.grid.save_to(arg) {
+                        let mut path: PathBuf = arg.into();
+                        match path.extension() {
+                            Some(s) => {
+                                match s.to_str() {
+                                    // leave the file alone, it already has
+                                    // a valid extension
+                                    Some(CSV_EXT) | Some(CUSTOM_EXT) => {}
+                                    _ => {
+                                        path.add_extension(CUSTOM_EXT);
+                                    }
+                                }
+                            }
+                            None => {
+                                path.add_extension(CUSTOM_EXT);
+                            }
+                        };
+
+                        if let Err(e) = app.grid.save_to(&path) {
                             app.msg = StatusMessage::error(format!("{e}"));
                         } else {
                             // file saving was a success, adopt the provided file
                             // if we don't already have one (this is how vim works)
-                            let path: PathBuf = arg.into();
-                            app.msg = StatusMessage::info(format!("Saved file {}", path.file_name().map(|f| f.to_str().unwrap_or("n/a")).unwrap_or("n/a")));
+                            app.msg = StatusMessage::info(format!(
+                                "Saved file {}",
+                                path.file_name().map(|f| f.to_str().unwrap_or("n/a")).unwrap_or("n/a")
+                            ));
 
                             if let None = app.file {
                                 app.file = Some(path)
@@ -76,7 +102,10 @@ impl Mode {
                         if let Err(e) = app.grid.save_to(file) {
                             app.msg = StatusMessage::error(format!("{e}"));
                         } else {
-                            app.msg = StatusMessage::info(format!("Saved file {}", file.file_name().map(|f| f.to_str().unwrap_or("n/a")).unwrap_or("n/a")));
+                            app.msg = StatusMessage::info(format!(
+                                "Saved file {}",
+                                file.file_name().map(|f| f.to_str().unwrap_or("n/a")).unwrap_or("n/a")
+                            ));
                         }
                     // you need to provide a file from *somewhere*
                     } else {
@@ -168,13 +197,13 @@ impl Mode {
                     'A' => {
                         let c = app.grid.cursor();
                         app.grid.insert_column_after(c);
-                        app.grid.mv_cursor_to(c.0+1, c.1);
+                        app.grid.mv_cursor_to(c.0 + 1, c.1);
                     }
                     // insert row below
                     'o' => {
                         let c = app.grid.cursor();
                         app.grid.insert_row_below(c);
-                        app.grid.mv_cursor_to(c.0, c.1+1);
+                        app.grid.mv_cursor_to(c.0, c.1 + 1);
                     }
                     // insert row above
                     'O' => {
@@ -200,7 +229,7 @@ impl Mode {
 
                     match key {
                         'd' | 'x' => {
-                            app.clipboard.clipboard_cut((x1,y1), (x2,y2), &mut app.grid);
+                            app.clipboard.clipboard_cut((x1, y1), (x2, y2), &mut app.grid);
                             app.mode = Mode::Normal
                         }
                         'y' => {
@@ -284,9 +313,9 @@ impl Mode {
                                 app.clipboard.paste(&mut app.grid, false);
                                 app.grid.apply_momentum(app.clipboard.momentum());
                                 app.mode = Mode::Normal;
-                                let plural = if app.clipboard.qty() > 1 {"cells"} else {"cell"};
+                                let plural = if app.clipboard.qty() > 1 { "cells" } else { "cell" };
                                 app.msg = StatusMessage::info(format!("Pasted {plural}, no formatting"));
-                        return;
+                                return;
                             }
                             _ => {}
                         }
@@ -294,8 +323,8 @@ impl Mode {
                 }
             }
             // IDK why it works but it does. Keystrokes are process somewhere else?
-            Mode::Insert(_chord) => {},
-            Mode::Command(_chord) => {},
+            Mode::Insert(_chord) => {}
+            Mode::Command(_chord) => {}
         }
     }
 
@@ -332,7 +361,6 @@ impl Mode {
             Mode::Visual(_) => {}
         }
     }
-
 }
 
 pub struct Chord {

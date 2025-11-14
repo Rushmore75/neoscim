@@ -18,6 +18,8 @@ use crate::app::{
 use crate::app::app::App;
 
 pub const LEN: usize = 1000;
+pub const CSV_EXT: &str = "csv";
+pub const CUSTOM_EXT: &str = "nscim";
 
 pub struct Grid {
     //  a b c ...
@@ -80,16 +82,13 @@ impl Grid {
     /// Save file to `path` as a csv. Path with have `csv` appended to it if it
     /// does not already have the extension.
     pub fn save_to(&mut self, path: impl Into<PathBuf>) -> std::io::Result<()> {
-        let mut path = path.into();
-
-        const CSV: &str = "csv";
-        const CUSTOM_EXT: &str = "nscim";
+        let path = path.into();
 
         let resolve_values;
 
         match path.extension() {
             Some(ext) => match ext.to_str() {
-                Some(CSV) => {
+                Some(CSV_EXT) => {
                     resolve_values = true;
                 }
                 Some(CUSTOM_EXT) => {
@@ -97,12 +96,12 @@ impl Grid {
                 }
                 _ => {
                     resolve_values = false;
-                    path.add_extension(CUSTOM_EXT);
+                    // path.add_extension(CUSTOM_EXT);
                 }
             },
             None => {
                 resolve_values = false;
-                path.add_extension(CUSTOM_EXT);
+                // path.add_extension(CUSTOM_EXT);
             }
         }
 
