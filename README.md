@@ -36,6 +36,10 @@ if value.can_be_a_number() {
 | `r` | Enter insert mode on current cell, deleting contents |
 | `v` | Enter visual mode |
 | `:` | Enter command mode |
+| `O` | Insert row above cursor |
+| `o` | Insert row below cursor |
+| `A` | Insert column after cursor |
+| `I` | Insert column before cursor |
 | `yy` | Yank current cell |
 | `d `/`dw` | Cut current cell |
 | `p` | Paste clipboard (cursor is top-left of multi-cell pastes). Automatically translates cell references |

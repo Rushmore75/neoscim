@@ -166,11 +166,15 @@ impl Mode {
                     }
                     // insert column after
                     'A' => {
-                        app.grid.insert_column_after(app.grid.cursor());
+                        let c = app.grid.cursor();
+                        app.grid.insert_column_after(c);
+                        app.grid.mv_cursor_to(c.0+1, c.1);
                     }
                     // insert row below
                     'o' => {
-                        app.grid.insert_row_below(app.grid.cursor());
+                        let c = app.grid.cursor();
+                        app.grid.insert_row_below(c);
+                        app.grid.mv_cursor_to(c.0, c.1+1);
                     }
                     // insert row above
                     'O' => {
