@@ -1,8 +1,8 @@
 use std::{
     cmp::{max, min},
-    fs,
+    fs::{self, File},
     io::{Read, Write},
-    path::PathBuf,
+    path::PathBuf
 };
 
 use evalexpr::*;
@@ -58,10 +58,9 @@ impl Grid {
         }
     }
 
-    pub fn new_from_file(path: impl Into<PathBuf>) -> std::io::Result<Self> {
+    pub fn new_from_file(file: &mut File) -> std::io::Result<Self> {
         let mut grid = Self::new();
 
-        let mut file = fs::OpenOptions::new().read(true).open(path.into())?;
         let mut buf = String::new();
         file.read_to_string(&mut buf)?;
         for (yi, line) in buf.lines().enumerate() {

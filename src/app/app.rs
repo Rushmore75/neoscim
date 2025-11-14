@@ -1,8 +1,5 @@
 use std::{
-    cmp::{max, min},
-    collections::HashMap,
-    io,
-    path::PathBuf,
+    cmp::{max, min}, collections::HashMap, fs, io, path::PathBuf, time::SystemTime
 };
 
 use ratatui::{
@@ -27,6 +24,7 @@ pub struct App {
     pub grid: Grid,
     pub mode: Mode,
     pub file: Option<PathBuf>,
+    file_modified_date: SystemTime,
     pub msg: StatusMessage,
     pub vars: HashMap<String, String>,
     pub screen: ScreenSpace,
@@ -211,13 +209,24 @@ impl App {
             screen: ScreenSpace::new(),
             marks: HashMap::new(),
             clipboard: Clipboard::new(),
+            file_modified_date: SystemTime::now(),
         }
     }
 
     pub fn new_with_file(file: impl Into<PathBuf> + Clone) -> std::io::Result<Self> {
         let mut app = Self::new();
         app.file = Some(file.clone().into());
-        app.grid = Grid::new_from_file(file.into())?;
+
+        let mut file = fs::OpenOptions::new().read(true).open(file.into())?;
+        let metadata = file.metadata()?;
+        // Not all systems support this, apparently.
+        if let Ok(time) = metadata.modified() {
+            app.file_modified_date = time;
+        } else {
+            // Default is to just assume it was modified when we opened it.
+        }
+
+        app.grid = Grid::new_from_file(&mut file)?;
         Ok(app)
     }
 

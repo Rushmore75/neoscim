@@ -1,7 +1,5 @@
 use std::{
-    cmp::{max, min},
-    fmt::Display,
-    path::PathBuf,
+    cmp::{max, min}, fmt::Display, fs, path::PathBuf
 };
 
 use ratatui::{
@@ -82,6 +80,9 @@ impl Mode {
                                 path.add_extension(CUSTOM_EXT);
                             }
                         };
+
+                        // TODO Check if the file exists, but the program wasn't opened with it. We might be accidentally overwriting something else.
+                        // let mut file = fs::OpenOptions::new().write(true).append(false).truncate(true).create(true).open(path)?;
 
                         if let Err(e) = app.grid.save_to(&path) {
                             app.msg = StatusMessage::error(format!("{e}"));
