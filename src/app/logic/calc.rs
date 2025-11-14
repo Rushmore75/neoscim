@@ -93,6 +93,9 @@ impl Grid {
                 Some(CSV) => {
                     resolve_values = true;
                 }
+                Some(CUSTOM_EXT) => {
+                    resolve_values = true;
+                }
                 _ => {
                     resolve_values = false;
                     path.add_extension(CUSTOM_EXT);
