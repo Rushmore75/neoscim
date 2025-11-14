@@ -1,13 +1,25 @@
 use std::{
-    cmp::{max, min}, collections::HashMap, io, path::PathBuf
+    cmp::{max, min},
+    collections::HashMap,
+    io,
+    path::PathBuf,
 };
 
 use ratatui::{
-    DefaultTerminal, Frame, crossterm::event, layout::{self, Constraint, Layout, Rect}, prelude, style::{Color, Modifier, Style}, widgets::{Paragraph, Widget}
+    DefaultTerminal, Frame,
+    crossterm::event,
+    layout::{self, Constraint, Layout, Rect},
+    prelude,
+    style::{Color, Modifier, Style},
+    widgets::{Paragraph, Widget},
 };
 
 use crate::app::{
-    clipboard::Clipboard, error_msg::StatusMessage, logic::{calc::Grid, cell::CellType}, mode::Mode, screen::ScreenSpace
+    clipboard::Clipboard,
+    error_msg::StatusMessage,
+    logic::{calc::Grid, cell::CellType},
+    mode::Mode,
+    screen::ScreenSpace,
 };
 
 pub struct App {
@@ -144,6 +156,13 @@ impl Widget for &App {
                                         break;
                                     }
                                 }
+                                if let Some(bound) = suggest_upper_bound {
+                                    let bound = bound as usize;
+                                    if bound < display.len() {
+                                        display.truncate(bound - 2);
+                                        display.push('…');
+                                    }
+                                }
                             }
                             None => should_render = false,
                         }
@@ -223,7 +242,7 @@ impl App {
             }
             if self.grid.needs_to_be_saved() {
                 icon = "[+]";
-            } 
+            }
             format!("{file_name}{icon}")
         };
         file_name_status
@@ -233,10 +252,10 @@ impl App {
         let (x, y) = self.grid.cursor();
         let current_cell = self.grid.get_cell_raw(x, y);
         let len = self.mode.chars_to_display(current_cell);
-        let file_name_status = self.file_name_display();       
+        let file_name_status = self.file_name_display();
 
         // layout
-        // ====================================================== 
+        // ======================================================
         let layout = Layout::default()
             .direction(layout::Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(1)])
@@ -246,14 +265,19 @@ impl App {
 
         let cmd_line_split = Layout::default()
             .direction(layout::Direction::Horizontal)
-            .constraints([Constraint::Length(len), Constraint::Length(file_name_status.len() as u16 + 1), Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([
+                Constraint::Length(len),
+                Constraint::Length(file_name_status.len() as u16 + 1),
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ])
             .split(cmd_line);
 
         let cmd_line_left = cmd_line_split[0];
         let cmd_line_status = cmd_line_split[1];
         let cmd_line_right = cmd_line_split[2];
         let cmd_line_debug = cmd_line_split[3];
-        // ====================================================== 
+        // ======================================================
 
         self.mode.render(frame, cmd_line_left, current_cell);
 
