@@ -280,8 +280,9 @@ impl Context for ExtractionContext {
     fn get_value(&self, identifier: &str) -> Option<Value<Self::NumericTypes>> {
         if let Ok(mut registry) = self.var_registry.write() {
             registry.push(identifier.to_owned());
-        }
-        None
+        } else { panic!("The RwLock should always be write-able") }
+
+        Some(Value::Int(1))
     }
 
     fn call_function(
@@ -292,8 +293,9 @@ impl Context for ExtractionContext {
         let _ = argument;
         if let Ok(mut registry) = self.fn_registry.write() {
             registry.push(identifier.to_owned())
-        }
-        Ok(Value::Empty)
+        } else { panic!("The RwLock should always be write-able") }
+        // Ok(Value::Int(1))
+        todo!();
     }
 
     fn are_builtin_functions_disabled(&self) -> bool {

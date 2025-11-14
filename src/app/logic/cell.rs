@@ -27,7 +27,7 @@ pub const CSV_DELIMITER: char = ',';
 const CSV_ESCAPE: char = '"';
 
 impl CellType {
-    pub fn to_string_csv_escaped(&self) -> String {
+    pub fn escaped_csv_string(&self) -> String {
         let mut display = self.to_string();
 
         // escape quotes " -> ""
@@ -53,7 +53,8 @@ impl CellType {
             if value.starts_with('=') { Self::Equation(value) } else { Self::String(value) }
         }
     }
-    pub fn translate_cell(&self, from: (usize, usize), to: (usize, usize)) -> CellType {
+
+    pub fn custom_translate_cell(&self, from: (usize, usize), to: (usize, usize), replace_fn: impl Fn(&str, &str, &str) -> String) -> CellType {
         match self {
             // don't translate non-equations
             CellType::Number(_) | CellType::String(_) => return self.clone(),
@@ -81,7 +82,8 @@ impl CellType {
                         let new_var = format!("{alpha}{dest_y}");
 
                         // swap out vars
-                        rolling = rolling.replace(&old_var, &new_var);
+                        rolling = replace_fn(&rolling, &old_var, &new_var);
+                        // rolling = rolling.replace(&old_var, &new_var);
                     } else {
                         // why you coping invalid stuff, nerd?
                     }
@@ -89,6 +91,10 @@ impl CellType {
                 return rolling.into();
             }
         }
+    }
+
+    pub fn translate_cell(&self, from: (usize, usize), to: (usize, usize)) -> CellType {
+        self.custom_translate_cell(from, to, |a,b,c| a.replace(b, c))
     }
 }
 

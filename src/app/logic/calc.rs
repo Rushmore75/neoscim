@@ -1,6 +1,5 @@
 use std::{
     cmp::{max, min},
-    fmt::Display,
     fs,
     io::{Read, Write},
     path::PathBuf,
@@ -8,10 +7,10 @@ use std::{
 
 use evalexpr::*;
 
-use crate::app::logic::{
+use crate::app::{logic::{
     cell::{CSV_DELIMITER, CellType},
     ctx,
-};
+}, mode::Mode};
 
 #[cfg(test)]
 use crate::app::app::App;
@@ -114,7 +113,7 @@ impl Grid {
                     {
                         val.to_string()
                     } else {
-                        cell.to_string_csv_escaped()
+                        cell.escaped_csv_string()
                     }
                 } else {
                     CSV_DELIMITER.to_string()
@@ -235,6 +234,42 @@ impl Grid {
         self.mv_cursor_to(x, y);
     }
 
+    pub fn insert_row_above(&mut self, (x, y): (usize, usize)) {todo!()}
+    pub fn insert_row_below(&mut self, (x, y): (usize, usize)) {todo!()}
+    pub fn insert_column_before(&mut self, (insertion_x, _y): (usize, usize)) {
+        let mut v = Vec::with_capacity(LEN);
+        for _ in 0..LEN {
+            v.push(None);
+        }
+        self.cells.insert(insertion_x, v);
+        // keep the grid LEN
+        self.cells.pop();
+        for x in 0..LEN  {
+            for y in 0..LEN {
+                if let Some(cell) = self
+                    .get_cell_raw(x, y)
+                    .as_ref()
+                    .map(|f| f
+                        .custom_translate_cell((0,0), (1,0), |rolling, old, new| {
+                            if let Some((arg_x, _)) = Grid::parse_to_idx(old) {
+                                // add 1 because of the insertion
+                                if arg_x < insertion_x {
+                                    rolling.to_owned()
+                                } else {
+                                    rolling.replace(old, new)
+                                }
+                            } else {
+                                unimplemented!("Invalid variable wanted to be translated")
+                            }
+                        })) {
+                    self.set_cell_raw((x,y), Some(cell));
+                }
+            }
+        }
+    }
+    pub fn insert_column_after(&mut self, (x, y): (usize, usize)) {
+        self.insert_column_before((x+1,y));
+    }
     /// Iterate over the entire grid and see where
     /// the farthest modified cell is.
     #[must_use]
@@ -758,4 +793,61 @@ fn cursor_fns() {
 
     app.grid.mv_cursor_to(1, 0);
     assert_eq!(app.grid.cursor(), (1, 0));
+}
+
+#[test]
+fn insert_col_before_1() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", 2.);
+    grid.set_cell("B0", "=A0*2".to_string());
+    grid.set_cell("B1", "=B0".to_string());
+
+    grid.mv_cursor_to(1, 0);
+
+    grid.insert_column_before(grid.cursor());
+
+    // cell didn't get translated
+    let cell = grid.get_cell("A0").as_ref().expect("Just set it");
+    assert_eq!(cell.to_string(), "2");
+
+    // cell referencing another cell on the same side of the insertion
+    let cell = grid.get_cell("C1").as_ref().expect("Just set it");
+    assert_eq!(cell.to_string(), "=C0");
+}
+
+#[test]
+fn insert_col_before_2() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", 2.);
+    grid.set_cell("B0", "=A0*2".to_string());
+    grid.set_cell("B1", "=B0".to_string());
+
+    grid.mv_cursor_to(0, 0);
+
+    grid.insert_column_before(grid.cursor());
+
+    let cell = grid.get_cell("B0").as_ref().expect("Just set it");
+    assert_eq!(cell.to_string(), "2");
+
+    // cell referencing another cell on the same side of the insertion
+    let cell = grid.get_cell("C1").as_ref().expect("Just set it");
+    assert_eq!(cell.to_string(), "=C0");
+}
+
+#[test]
+fn insert_col_before_3() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", 2.);
+    grid.set_cell("A1", 2.);
+    grid.set_cell("B0", "=A0*A1".to_string());
+
+    grid.mv_cursor_to(0, 0);
+
+    grid.insert_column_before(grid.cursor());
+
+    let cell = grid.get_cell("C0").as_ref().expect("Just set it");
+    assert_eq!(cell.to_string(), "=B0*B1");
 }

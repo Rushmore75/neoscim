@@ -160,8 +160,14 @@ impl Mode {
                     'r' => {
                         app.mode = Mode::Insert(Chord::from(String::new()));
                     }
-                    'I' => { /* insert col before */ }
-                    'A' => { /* insert col after */ }
+                    // insert column before
+                    'I' => {
+                        app.grid.insert_column_before(app.grid.cursor());
+                    }
+                    // insert column after
+                    'A' => {
+                        app.grid.insert_column_after(app.grid.cursor());
+                    }
                     'o' => { /* insert row below */ }
                     'O' => { /* insert row above */ }
                     'v' => app.mode = Mode::Visual(app.grid.cursor()),

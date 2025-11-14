@@ -1,6 +1,4 @@
-use evalexpr::eval_with_context;
-
-use crate::app::logic::{calc::Grid, cell::CellType, ctx::ExtractionContext};
+use crate::app::logic::{calc::Grid, cell::CellType};
 
 #[cfg(test)]
 use crate::app::{
