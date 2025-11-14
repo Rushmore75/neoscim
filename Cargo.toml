@@ -8,3 +8,16 @@ edition = "2024"
 # evalexpr ={ path = "../evalexpr"}
 evalexpr = { git="https://github.com/Rushmore75/evalexpr.git" }
 ratatui = "0.29.0"
+
+[profile.release]
+# Down 1.4M -> 1.1M
+lto = true
+# Down 1.1M -> 944K
+strip = true
+# z 944K -> 820K
+# 3      -> 944K
+opt-level = 3 # 3 was a couple million ns faster than z when benched
+# 1 944K -> 920K 
+codegen-units = 1
+# 920K -> 868K
+panic = "abort"
