@@ -3,22 +3,6 @@
 *New* Spreadsheet Calculator Improved
 
 Based loosely off sc-im (spreadsheet calculator improvised), which has dumb keybinds and not many features.
-## Improvements from sc-im
-
-* Cell type (string, function, value) are all "the same" and use polymorphism to detect what you are trying to do.
-The logic is more or less:
-```cpp
-if value.can_be_a_number() {
-    return value.as_number()
-} else if value.starts_with('=') {
-    return value.as_equation()
-} else {
-    return value.as_string()
-}
-```
-
-* Keybinds are closer to vim keying (i/a start inserting into a cell)
-
 
 ## Keybinds
 
@@ -140,6 +124,19 @@ if value.can_be_a_number() {
 > Cells are interchangeable with numbers, ex: `math::pow(A1,B1)` or `math::pow(1,2)`.
 
 > Any time a function takes a variable amount of inputs, a range can be specified: `avg(B:B)`.
+
+## Improvements from sc-im
+
+* Cell type (string, function, value) are all "the same" and use polymorphism to detect what you are trying to do.
+If the cell can be a number (parsed into a float) it will be, if not, then if the string starts with "=", then treats it as an equation, otherwise, it's a string.
+
+* Cell references move with copy / paste
+    * =A0: Will translate
+    * =$A0: Will translate Y only
+    * =$A0: Will translate X only
+    * =$A$0: No translation
+
+* Keybinds are closer to vim keying (i/a start inserting into a cell)
 
 ## FAQ:
 
