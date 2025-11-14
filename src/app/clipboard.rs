@@ -296,3 +296,57 @@ fn copy_paste_vars_translate() {
     let a = app.grid.get_cell("A0").as_ref().expect("Should've been set by paste");
     assert_eq!(a.to_string(), "=A1");
 }
+
+#[test]
+fn copy_paste_double_locked_var() {
+    let mut app = App::new();
+
+    app.grid.set_cell("A0", 0.);
+    app.grid.set_cell("A1", "=$A$0".to_string());
+
+    // Copy A0
+    app.grid.mv_cursor_to(0, 1);
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+
+    app.grid.mv_cursor_to(1, 0);
+    Mode::process_key(&mut app, 'p');
+    let c = app.grid.get_cell("B0").as_ref().expect("Just set it");
+    assert_eq!(c.to_string(), "=$A$0");
+}
+
+#[test]
+fn copy_paste_x_locked_var() {
+    let mut app = App::new();
+
+    app.grid.set_cell("A0", 0.);
+    app.grid.set_cell("A1", "=$A0".to_string());
+
+    // Copy A0
+    app.grid.mv_cursor_to(0, 1);
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+
+    app.grid.mv_cursor_to(1, 2);
+    Mode::process_key(&mut app, 'p');
+    let c = app.grid.get_cell("B2").as_ref().expect("Just set it");
+    assert_eq!(c.to_string(), "=$A1");
+}
+
+#[test]
+fn copy_paste_y_locked_var() {
+    let mut app = App::new();
+
+    app.grid.set_cell("A0", 0.);
+    app.grid.set_cell("A1", "=A$0".to_string());
+
+    // Copy A0
+    app.grid.mv_cursor_to(0, 1);
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+
+    app.grid.mv_cursor_to(1, 2);
+    Mode::process_key(&mut app, 'p');
+    let c = app.grid.get_cell("B2").as_ref().expect("Just set it");
+    assert_eq!(c.to_string(), "=B$0");
+}

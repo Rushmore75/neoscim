@@ -66,6 +66,37 @@ impl CellType {
                 let mut rolling = eq.clone();
                 // translate standard vars A0 -> A1
                 for old_var in ctx.dump_vars() {
+                    let mut lock_x = false;
+                    let mut lock_y = false;
+
+                    if old_var.contains('$') {
+                        let locations = old_var.char_indices().filter(|(_, c)| *c == '$').map(|(i, _)| i).collect::<Vec<usize>>();
+                        match locations.len() {
+                            1 => {
+                                if locations[0] == 0 {
+                                    // locking the X axis (A,B,C...)
+                                    lock_x = true;
+                                } else if locations[0] < old_var.len() {
+                                    // inside the string somewhere, gonna assume this means to lock Y (1,2,3...)
+                                    lock_y = true;
+
+                                } else {
+                                    // where tf is this dollar sign?
+                                    // (It's somewhere malformed, like A0$ or something)
+                                }
+                            }
+                            2 => {
+                                // YOLO, lock both X & Y
+                                continue; // just pretend you never even saw this var
+                            }
+                            _ => {
+                                // Could probably optimize the code or something so you only go over the string
+                                // once, instead of contains() then getting the indexes of where it is.
+                                // You could then put your no-$ code here.
+                            }
+                        }
+                    }
+                    
                     if let Some((src_x, src_y)) = Grid::parse_to_idx(&old_var) {
                         let (x1, y1) = from;
                         let x1 = x1 as i32;
@@ -74,12 +105,29 @@ impl CellType {
                         let x2 = x2 as i32;
                         let y2 = y2 as i32;
 
-                        let dest_x = (src_x as i32 + (x2 - x1)) as usize;
-                        let dest_y = (src_y as i32 + (y2 - y1)) as usize;
+                        let dest_x = if lock_x {
+                            src_x as usize
+                        } else {
+                            (src_x as i32 + (x2 - x1)) as usize
+                        };
+
+                        let dest_y = if lock_y {
+                            src_y as usize
+                        } else {
+                            (src_y as i32 + (y2 - y1)) as usize
+                        };
 
                         let alpha = Grid::num_to_char(dest_x);
                         let alpha = alpha.trim();
-                        let new_var = format!("{alpha}{dest_y}");
+
+                        let new_var = if lock_x {
+                            format!("${alpha}{dest_y}")
+                        } else if lock_y {
+                            format!("{alpha}${dest_y}")
+                        } else {
+                            format!("{alpha}{dest_y}")
+                        };
+
 
                         // swap out vars
                         rolling = replace_fn(&rolling, &old_var, &new_var);

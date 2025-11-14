@@ -295,7 +295,7 @@ impl Context for ExtractionContext {
             registry.push(identifier.to_owned())
         } else { panic!("The RwLock should always be write-able") }
         // Ok(Value::Int(1))
-        todo!();
+        unimplemented!("Extracting function identifier not implemented yet")
     }
 
     fn are_builtin_functions_disabled(&self) -> bool {

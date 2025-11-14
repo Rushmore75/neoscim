@@ -379,6 +379,8 @@ impl Grid {
     /// Parse values in the format of A0, C10 ZZ99, etc, and
     /// turn them into an X,Y index.
     pub fn parse_to_idx(i: &str) -> Option<(usize, usize)> {
+        let i = i.replace('$', "");
+
         let chars = i.chars().take_while(|c| c.is_alphabetic()).collect::<Vec<char>>();
         let nums = i.chars().skip(chars.len()).take_while(|c| c.is_numeric()).collect::<String>();
 
@@ -474,6 +476,9 @@ fn cell_strings() {
 #[test]
 fn alphanumeric_indexing() {
     assert_eq!(Grid::parse_to_idx("A0"), Some((0, 0)));
+    assert_eq!(Grid::parse_to_idx("$A0"), Some((0, 0)));
+    assert_eq!(Grid::parse_to_idx("A$0"), Some((0, 0)));
+    assert_eq!(Grid::parse_to_idx("$A$0"), Some((0, 0)));
     assert_eq!(Grid::parse_to_idx("AA0"), Some((26, 0)));
     assert_eq!(Grid::parse_to_idx("A1"), Some((0, 1)));
     assert_eq!(Grid::parse_to_idx("A10"), Some((0, 10)));
