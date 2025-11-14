@@ -168,8 +168,14 @@ impl Mode {
                     'A' => {
                         app.grid.insert_column_after(app.grid.cursor());
                     }
-                    'o' => { /* insert row below */ }
-                    'O' => { /* insert row above */ }
+                    // insert row below
+                    'o' => {
+                        app.grid.insert_row_below(app.grid.cursor());
+                    }
+                    // insert row above
+                    'O' => {
+                        app.grid.insert_row_above(app.grid.cursor());
+                    }
                     'v' => app.mode = Mode::Visual(app.grid.cursor()),
                     ':' => app.mode = Mode::Command(Chord::new(':')),
                     'p' => {
