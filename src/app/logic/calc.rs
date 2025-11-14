@@ -12,7 +12,6 @@ use crate::app::{
         cell::{CSV_DELIMITER, CellType},
         ctx,
     },
-    mode::Mode,
 };
 
 #[cfg(test)]

@@ -210,27 +210,7 @@ impl App {
         Ok(())
     }
 
-    fn draw(&self, frame: &mut Frame) {
-        let layout = Layout::default()
-            .direction(layout::Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(1)])
-            .split(frame.area());
-
-        let cmd_line = layout[0];
-        let body = layout[1];
-
-        let len = match &self.mode {
-            Mode::Insert(edit) | Mode::Command(edit) | Mode::Chord(edit) => edit.len(),
-            Mode::Normal => {
-                let (x, y) = self.grid.cursor();
-                let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string().len()).unwrap_or_default();
-                cell
-            }
-            Mode::Visual(_) => 0,
-        };
-        // min 20 chars, expand if needed
-        let len = max(len as u16 + 1, 20);
-
+    fn file_name_display(&self) -> String {
         let file_name_status = {
             let mut file_name = "[No Name]";
             let mut icon = "";
@@ -246,6 +226,23 @@ impl App {
             } 
             format!("{file_name}{icon}")
         };
+        file_name_status
+    }
+
+    fn draw(&self, frame: &mut Frame) {
+        let (x, y) = self.grid.cursor();
+        let current_cell = self.grid.get_cell_raw(x, y);
+        let len = self.mode.chars_to_display(current_cell);
+        let file_name_status = self.file_name_display();       
+
+        // layout
+        // ====================================================== 
+        let layout = Layout::default()
+            .direction(layout::Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(1)])
+            .split(frame.area());
+        let cmd_line = layout[0];
+        let body = layout[1];
 
         let cmd_line_split = Layout::default()
             .direction(layout::Direction::Horizontal)
@@ -256,29 +253,14 @@ impl App {
         let cmd_line_status = cmd_line_split[1];
         let cmd_line_right = cmd_line_split[2];
         let cmd_line_debug = cmd_line_split[3];
+        // ====================================================== 
 
-        match &self.mode {
-            Mode::Insert(editor) => {
-                frame.render_widget(editor, cmd_line_left);
-            }
-            Mode::Command(editor) => {
-                frame.render_widget(editor, cmd_line_left);
-            }
-            Mode::Chord(chord) => frame.render_widget(chord, cmd_line_left),
-            Mode::Normal => frame.render_widget(
-                Paragraph::new({
-                    let (x, y) = self.grid.cursor();
-                    let cell = self.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or_default();
-                    cell
-                }),
-                cmd_line_left,
-            ),
-            Mode::Visual(_) => {}
-        }
+        self.mode.render(frame, cmd_line_left, current_cell);
 
         frame.render_widget(self, body);
         frame.render_widget(&self.msg, cmd_line_right);
         frame.render_widget(Paragraph::new(file_name_status), cmd_line_status);
+
         #[cfg(debug_assertions)]
         frame.render_widget(
             Paragraph::new(format!(

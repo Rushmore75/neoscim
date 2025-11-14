@@ -1,4 +1,4 @@
-use std::{cmp::min, fmt::Display, path::PathBuf};
+use std::{cmp::{max, min}, fmt::Display, path::PathBuf};
 
 use ratatui::{
     prelude,
@@ -9,7 +9,7 @@ use ratatui::{
 use crate::app::{
     app::App,
     error_msg::StatusMessage,
-    logic::calc::LEN,
+    logic::{calc::LEN, cell::CellType},
 };
 
 pub enum Mode {
@@ -298,6 +298,41 @@ impl Mode {
             Mode::Command(_chord) => {},
         }
     }
+
+    pub fn chars_to_display(&self, cell: &Option<CellType>) -> u16 {
+        let len = match &self {
+            Mode::Insert(edit) | Mode::Command(edit) | Mode::Chord(edit) => edit.len(),
+            Mode::Normal => {
+                let len = cell.as_ref().map(|f| f.to_string().len()).unwrap_or_default();
+                len
+            }
+            Mode::Visual(_) => 0,
+        };
+        // min 20 chars, expand if needed
+        let len = max(len as u16 + 1, 20);
+        len
+    }
+
+    pub fn render(&self, f: &mut ratatui::Frame, area: prelude::Rect, cell: &Option<CellType>) {
+        match &self {
+            Mode::Insert(editor) => {
+                f.render_widget(editor, area);
+            }
+            Mode::Command(editor) => {
+                f.render_widget(editor, area);
+            }
+            Mode::Chord(chord) => f.render_widget(chord, area),
+            Mode::Normal => f.render_widget(
+                Paragraph::new({
+                    let cell = cell.as_ref().map(|f| f.to_string()).unwrap_or_default();
+                    cell
+                }),
+                area,
+            ),
+            Mode::Visual(_) => {}
+        }
+    }
+
 }
 
 pub struct Chord {
