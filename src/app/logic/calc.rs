@@ -91,7 +91,7 @@ impl Grid {
                     resolve_values = true;
                 }
                 Some(CUSTOM_EXT) => {
-                    resolve_values = true;
+                    resolve_values = false;
                 }
                 _ => {
                     resolve_values = false;
