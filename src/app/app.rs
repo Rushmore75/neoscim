@@ -125,7 +125,10 @@ impl Widget for &App {
                             Some(cell) => {
                                 match cell {
                                     CellType::Number(c) => display = c.to_string(),
-                                    CellType::String(s) => display = s.to_owned(),
+                                    CellType::String(s) => {
+                                        display = s.to_owned();
+                                        style = Style::new().fg(Color::LightMagenta)
+                                    }
                                     CellType::Equation(e) => {
                                         match self.grid.evaluate(e) {
                                             Ok(val) => {
