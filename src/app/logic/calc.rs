@@ -802,8 +802,16 @@ fn ranges() {
 
 #[test]
 fn recursive_ranges() {
-    // recursive ranges causes weird behavior
-    // todo!();
+    let mut grid = Grid::new();
+
+    grid.set_cell("A1", 1.);
+    grid.set_cell("B1", 2.);
+    grid.set_cell("B0", "=sum(A:A)".to_string());
+    grid.set_cell("A0", "=sum(B:B)".to_string());
+
+    let cell = grid.get_cell("B0").as_ref().expect("Just set it");
+    let res = grid.evaluate(&cell.to_string());
+    assert!(res.is_err());
 }
 
 #[test]
