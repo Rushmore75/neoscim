@@ -1,5 +1,8 @@
 use std::{
-    cmp::{max, min}, fmt::Display, fs, path::PathBuf
+    cmp::{max, min},
+    fmt::Display,
+    fs,
+    path::PathBuf,
 };
 
 use ratatui::{
@@ -12,7 +15,7 @@ use crate::app::{
     app::App,
     error_msg::StatusMessage,
     logic::{
-        calc::{CSV_EXT, CUSTOM_EXT, LEN},
+        calc::{CSV_EXT, CUSTOM_EXT, Grid, LEN},
         cell::CellType,
     },
 };
@@ -146,14 +149,31 @@ impl Mode {
                 _ => {}
             }
         }
-        if let Mode::VisualCmd(pos, editor ) = &mut app.mode {
+        if let Mode::VisualCmd(pos, editor) = &mut app.mode {
             let cmd = &editor.as_string()[1..];
             let args = cmd.split_ascii_whitespace().collect::<Vec<&str>>();
             if args.is_empty() {
                 return;
             }
             match args[0] {
-                "foo" => {}
+                "export" => {
+                    if let Some(arg1) = args.get(1) {
+                        let (x1, y1) = pos;
+                        let (x1, y1) = (*x1, *y1);
+                        let (x2, y2) = app.grid.cursor();
+                        let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
+                        let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
+
+                        let mut g = Grid::new();
+                        for (i, x) in (low_x..=hi_x).enumerate() {
+                            for (j, y) in (low_y..=hi_y).enumerate() {
+                                g.set_cell_raw((i, j), app.grid.get_cell_raw(x, y).clone());
+                            }
+                        }
+                        g.save_to(arg1).expect("Failure");
+                    }
+                    app.mode = Mode::Normal
+                }
                 _ => {}
             }
         }
@@ -343,10 +363,10 @@ impl Mode {
                     }
                 }
             }
-            // Keys are process in the handle_event method in App for these 
+            // Keys are process in the handle_event method in App for these
             Mode::Insert(_chord) => {}
             Mode::Command(_chord) => {}
-            Mode::VisualCmd(_pos, _chord ) => {}
+            Mode::VisualCmd(_pos, _chord) => {}
         }
     }
 

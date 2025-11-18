@@ -42,7 +42,7 @@ impl Widget for &App {
         let (x_max, y_max) = self.screen.how_many_cells_fit_in(&area, &self.vars);
 
         let is_selected = |x: usize, y: usize| -> bool {
-            if let Mode::Visual((mut x1, mut y1)) = self.mode {
+            if let Mode::Visual((mut x1, mut y1)) | Mode::VisualCmd((mut x1, mut y1), _)= self.mode {
                 let (mut x2, mut y2) = self.grid.cursor();
                 x1 += 1;
                 y1 += 1;
@@ -78,10 +78,6 @@ impl Widget for &App {
                 }
                 if y != 0 {
                     y_idx = y as usize - 1 + self.screen.scroll_y();
-                }
-
-                if is_selected(x.into(), y.into()) {
-                    style = style.fg(Color::LightMagenta).bg(Color::Blue);
                 }
 
                 const ORANGE1: Color = Color::Rgb(200, 160, 0);
@@ -170,6 +166,10 @@ impl Widget for &App {
                                 }
                             }
                             None => should_render = false,
+                        }
+
+                        if is_selected(x.into(), y.into()) {
+                            style = style.bg(Color::Blue);
                         }
                         if (x_idx, y_idx) == self.grid.cursor() {
                             should_render = true;
