@@ -2,7 +2,7 @@ use std::{
     cmp::{max, min},
     fmt::Display,
     fs,
-    path::PathBuf,
+    path::PathBuf, process::Command,
 };
 
 use ratatui::{
@@ -155,23 +155,71 @@ impl Mode {
             if args.is_empty() {
                 return;
             }
+
+            // These values are going to be used in probably all
+            // the commands related to ranges, we will just write
+            // logic here first, once.
+            let (x1, y1) = pos;
+            let (x1, y1) = (*x1, *y1);
+            let (x2, y2) = app.grid.cursor();
+            let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
+            let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
+
+            let mut save_range = |to: &str| {
+                let mut g = Grid::new();
+                for (i, x) in (low_x..=hi_x).enumerate() {
+                    for (j, y) in (low_y..=hi_y).enumerate() {
+                        g.set_cell_raw((i, j), app.grid.get_cell_raw(x, y).clone());
+                    }
+                }
+                if let Err(_e) = g.save_to(to) {
+                    app.msg = StatusMessage::error("Failed to save file");
+                }
+            };
+
+            let get_project_name = || {
+                if let Some(file) = &app.file {
+                    if let Some(name) = file.file_name() {
+                        if let Some(name) = name.to_str() {
+                            return name;
+                        }
+                    }
+                }
+                return "unknown"
+            };
+
             match args[0] {
                 "export" => {
                     if let Some(arg1) = args.get(1) {
-                        let (x1, y1) = pos;
-                        let (x1, y1) = (*x1, *y1);
-                        let (x2, y2) = app.grid.cursor();
-                        let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
-                        let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
-
-                        let mut g = Grid::new();
-                        for (i, x) in (low_x..=hi_x).enumerate() {
-                            for (j, y) in (low_y..=hi_y).enumerate() {
-                                g.set_cell_raw((i, j), app.grid.get_cell_raw(x, y).clone());
-                            }
-                        }
-                        g.save_to(arg1).expect("Failure");
+                        save_range(&arg1);
+                    } else {
+                        app.msg = StatusMessage::error("export <path.csv>")
                     }
+                    app.mode = Mode::Normal
+                }
+                "plot" => {
+                    // Use gnuplot to plot the selected data.
+                    // * Temp data will be stored in /tmp/
+                    // * Output will either be plot.png or a name that you pass in
+                    let output_filename = if let Some(arg1) = args.get(1) {
+                        arg1
+                    } else {
+                        "plot.png"
+                    };
+
+                    save_range("/tmp/plot.csv");
+                    let plot = include_str!("../../template.gnuplot");
+                    let s = plot.replace("$FILE", "/tmp/plot.csv");
+                    let s = s.replace("$TITLE", get_project_name());
+                    let s = s.replace("$XLABEL", "hard-coded x");
+                    let s = s.replace("$YLABEL", "hard-coded y");
+                    let s = s.replace("$OUTPUT", "/tmp/output.png");
+                    let _ = fs::write("/tmp/plot.p", s);
+
+                    let _ = Command::new("gnuplot").arg("/tmp/plot.p").output();
+                    let _ = fs::copy("/tmp/output.png", output_filename);
+
+                    app.msg = StatusMessage::info("Wrote gnuplot data to /tmp");
                     app.mode = Mode::Normal
                 }
                 _ => {}
