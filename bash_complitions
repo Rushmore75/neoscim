@@ -1,0 +1,10 @@
+# This is only WIP, idk how to make it only take
+# 1 argument yet
+_complete() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+
+    # Only suggest *.csv and *.neoscim
+    COMPREPLY=($(compgen -f -X '!*.@(csv|neoscim)' -- "$cur"))
+}
+
+complete -F _complete sc

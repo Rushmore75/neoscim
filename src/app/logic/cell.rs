@@ -38,9 +38,9 @@ impl CellType {
 
         // escape string of it has a comma
         if display.contains(CSV_DELIMITER) {
-            format!("\"{display}\"{CSV_DELIMITER}")
+            format!("\"{display}\"")
         } else {
-            format!("{display}{CSV_DELIMITER}")
+            display
         }
     }
 

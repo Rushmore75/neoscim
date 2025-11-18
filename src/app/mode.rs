@@ -23,6 +23,7 @@ pub enum Mode {
     Normal,
     Command(Chord),
     Visual((usize, usize)),
+    VisualCmd((usize, usize), Chord),
 }
 
 impl Display for Mode {
@@ -33,6 +34,7 @@ impl Display for Mode {
             Mode::Chord(_) => write!(f, "CHORD"),
             Mode::Command(_) => write!(f, "COMMAND"),
             Mode::Visual(_) => write!(f, "VISUAL"),
+            Mode::VisualCmd(_, _) => write!(f, "V-CMD"),
         }
     }
 }
@@ -43,6 +45,7 @@ impl Mode {
             // Where you are typing
             Mode::Insert(_) => Style::new().fg(Color::White).bg(Color::Blue),
             Mode::Command(_) => Style::new().fg(Color::Black).bg(Color::Magenta),
+            Mode::VisualCmd(_, _) => Style::new().fg(Color::Black).bg(Color::Yellow),
             Mode::Chord(_) => Style::new().fg(Color::Black).bg(Color::LightBlue),
             // Movement-based modes
             Mode::Visual(_) => Style::new().fg(Color::Yellow),
@@ -143,6 +146,17 @@ impl Mode {
                 _ => {}
             }
         }
+        if let Mode::VisualCmd(pos, editor ) = &mut app.mode {
+            let cmd = &editor.as_string()[1..];
+            let args = cmd.split_ascii_whitespace().collect::<Vec<&str>>();
+            if args.is_empty() {
+                return;
+            }
+            match args[0] {
+                "foo" => {}
+                _ => {}
+            }
+        }
     }
 
     pub fn process_key(app: &mut App, key: char) {
@@ -211,7 +225,13 @@ impl Mode {
                         app.grid.insert_row_above(app.grid.cursor());
                     }
                     'v' => app.mode = Mode::Visual(app.grid.cursor()),
-                    ':' => app.mode = Mode::Command(Chord::new(':')),
+                    ':' => {
+                        if let Self::Visual(pos) = app.mode {
+                            app.mode = Mode::VisualCmd(pos, Chord::new(':'));
+                        } else {
+                            app.mode = Mode::Command(Chord::new(':'))
+                        }
+                    }
                     'p' => {
                         app.clipboard.paste(&mut app.grid, true);
                         app.grid.apply_momentum(app.clipboard.momentum());
@@ -323,15 +343,16 @@ impl Mode {
                     }
                 }
             }
-            // IDK why it works but it does. Keystrokes are process somewhere else?
+            // Keys are process in the handle_event method in App for these 
             Mode::Insert(_chord) => {}
             Mode::Command(_chord) => {}
+            Mode::VisualCmd(_pos, _chord ) => {}
         }
     }
 
     pub fn chars_to_display(&self, cell: &Option<CellType>) -> u16 {
         let len = match &self {
-            Mode::Insert(edit) | Mode::Command(edit) | Mode::Chord(edit) => edit.len(),
+            Mode::Insert(edit) | Mode::VisualCmd(_, edit) | Mode::Command(edit) | Mode::Chord(edit) => edit.len(),
             Mode::Normal => {
                 let len = cell.as_ref().map(|f| f.to_string().len()).unwrap_or_default();
                 len
@@ -360,6 +381,7 @@ impl Mode {
                 area,
             ),
             Mode::Visual(_) => {}
+            Mode::VisualCmd(_, editor) => f.render_widget(editor, area),
         }
     }
 }

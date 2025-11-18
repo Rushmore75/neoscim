@@ -1,5 +1,9 @@
 use std::{
-    cmp::{max, min}, collections::HashMap, fs, io, path::PathBuf, time::SystemTime
+    cmp::{max, min},
+    collections::HashMap,
+    fs, io,
+    path::PathBuf,
+    time::SystemTime,
 };
 
 use ratatui::{
@@ -315,6 +319,21 @@ impl App {
 
     fn handle_events(&mut self) -> io::Result<()> {
         match &mut self.mode {
+            Mode::VisualCmd(pos, chord) => match event::read()? {
+                event::Event::Key(key) => match key.code {
+                    event::KeyCode::Esc => self.mode = Mode::Visual(*pos),
+                    event::KeyCode::Backspace => chord.backspace(),
+                    event::KeyCode::Char(c) => chord.add_char(c),
+                    event::KeyCode::Enter => {
+                        // tmp is to get around reference issues.
+                        let tmp = pos.clone();
+                        Mode::process_cmd(self);
+                        self.mode = Mode::Visual(tmp)
+                    }
+                    _ => {}
+                },
+                _ => {}
+            },
             Mode::Chord(chord) => match event::read()? {
                 event::Event::Key(key) => match key.code {
                     event::KeyCode::Esc => self.mode = Mode::Normal,
@@ -384,19 +403,12 @@ impl App {
             }
             Mode::Command(editor) => match event::read()? {
                 event::Event::Key(key) => match key.code {
-                    event::KeyCode::Esc => {
-                        // just cancel the operation
-                        self.mode = Mode::Normal;
-                    }
+                    event::KeyCode::Esc => self.mode = Mode::Normal,
+                    event::KeyCode::Backspace => editor.backspace(),
+                    event::KeyCode::Char(c) => editor.add_char(c),
                     event::KeyCode::Enter => {
                         Mode::process_cmd(self);
                         self.mode = Mode::Normal;
-                    }
-                    event::KeyCode::Backspace => {
-                        editor.backspace();
-                    }
-                    event::KeyCode::Char(c) => {
-                        editor.add_char(c);
                     }
                     _ => {}
                 },

@@ -11,7 +11,7 @@ use crate::app::{
     logic::{
         cell::{CSV_DELIMITER, CellType},
         ctx,
-    },
+    }, mode::Mode,
 };
 
 #[cfg(test)]
@@ -110,21 +110,28 @@ impl Grid {
             for x in 0..=mx {
                 let cell = &self.cells[x][y];
 
+                // newline after the cell, because it's end of line.
+                // else, just put a comma after the cell.
+                let is_last = x==mx;
+                let delim = if is_last {
+                    '\n'
+                } else {
+                    CSV_DELIMITER
+                };
+
                 let data = if let Some(cell) = cell {
                     if let Ok(val) = self.evaluate(&cell.to_string())
                         && resolve_values
                     {
-                        val.to_string()
+                        format!("{}{}", val.to_string(), delim)
                     } else {
-                        cell.escaped_csv_string()
+                        format!("{}{}", cell.escaped_csv_string(), delim)
                     }
                 } else {
-                    CSV_DELIMITER.to_string()
+                    delim.to_string()
                 };
-
                 write!(f, "{data}")?;
             }
-            write!(f, "\n")?;
         }
         f.flush()?;
 
@@ -457,6 +464,92 @@ impl Default for Grid {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[test]
+fn saving_csv() {
+    // setup grid
+    // This should be 1..10 in the A column, then
+    // 1^2..10^2 in the B column.
+    let mut app = App::new();
+    app.grid.set_cell("A0", 1.);
+    app.grid.set_cell("B0", "=A0^2".to_string());
+
+    app.grid.set_cell("A1", "=A0+A$0".to_string());
+    app.grid.set_cell("B1", "=A1^2".to_string());
+
+    app.grid.mv_cursor_to(0, 1);
+    app.mode = Mode::Visual(app.grid.cursor());
+    Mode::process_key(&mut app, 'l');
+    Mode::process_key(&mut app, 'y');
+    app.mode = Mode::Normal;
+    app.grid.mv_cursor_to(0, 2);
+    for _ in 0..10 {
+        Mode::process_key(&mut app, 'p');
+    }
+    // setup done
+
+    // insure that the cells are there
+    let cell = app.grid.get_cell_raw(0, 10).as_ref().expect("Should've been set");
+    let res = app.grid.evaluate(&cell.to_string()).expect("Should evaluate");
+    assert_eq!(res, 11.0);
+    assert_eq!(cell.escaped_csv_string(), "=A9+A$0");
+    let cell = app.grid.get_cell_raw(1, 10).as_ref().expect("Should've been set");
+    let res = app.grid.evaluate(&cell.to_string()).expect("Should evaluate");
+    assert_eq!(res, 121.0);
+    assert_eq!(cell.escaped_csv_string(), "=A10^2");
+
+    // set saving the file
+    let filename = "/tmp/file.csv";
+    app.grid.save_to(filename).expect("This will only work on linux systems");
+    let mut file = fs::OpenOptions::new().read(true).open(filename).expect("Just wrote the file");
+    let mut buf = String::new();
+    file.read_to_string(&mut buf).expect("Just opened the file");
+    let line = buf.lines().skip(10).next();
+    assert_eq!(line, Some("11,121"));
+}
+
+#[test]
+fn saving_neoscim() {
+    // setup grid
+    // This should be 1..10 in the A column, then
+    // 1^2..10^2 in the B column.
+    let mut app = App::new();
+    app.grid.set_cell("A0", 1.);
+    app.grid.set_cell("B0", "=A0^2".to_string());
+
+    app.grid.set_cell("A1", "=A0+A$0".to_string());
+    app.grid.set_cell("B1", "=A1^2".to_string());
+
+    app.grid.mv_cursor_to(0, 1);
+    app.mode = Mode::Visual(app.grid.cursor());
+    Mode::process_key(&mut app, 'l');
+    Mode::process_key(&mut app, 'y');
+    app.mode = Mode::Normal;
+    app.grid.mv_cursor_to(0, 2);
+    for _ in 0..10 {
+        Mode::process_key(&mut app, 'p');
+    }
+    // setup done
+
+    // insure that the cells are there
+    let cell = app.grid.get_cell_raw(0, 10).as_ref().expect("Should've been set");
+    let res = app.grid.evaluate(&cell.to_string()).expect("Should evaluate");
+    assert_eq!(res, 11.0);
+    assert_eq!(cell.escaped_csv_string(), "=A9+A$0");
+    let cell = app.grid.get_cell_raw(1, 10).as_ref().expect("Should've been set");
+    let res = app.grid.evaluate(&cell.to_string()).expect("Should evaluate");
+    assert_eq!(res, 121.0);
+    assert_eq!(cell.escaped_csv_string(), "=A10^2");
+
+    // set saving the file
+    let filename=  "/tmp/file.neoscim";
+    app.grid.save_to(filename).expect("This will only work on linux systems");
+    let mut file = fs::OpenOptions::new().read(true).open(filename).expect("Just wrote the file");
+    let mut buf = String::new();
+    file.read_to_string(&mut buf).expect("Just opened the file");
+    let line = buf.lines().skip(10).next();
+    assert_eq!(line, Some("=A9+A$0,=A10^2"));
 }
 
 // Do cells hold strings?
