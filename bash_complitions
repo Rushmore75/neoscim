@@ -4,7 +4,7 @@ _complete() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
 
     # Only suggest *.csv and *.neoscim
-    COMPREPLY=($(compgen -f -X '!*.@(csv|neoscim)' -- "$cur"))
+    COMPREPLY=($(compgen -f -X '!*.@(csv|nscim)' -- "$cur"))
 }
 
 complete -F _complete sc
