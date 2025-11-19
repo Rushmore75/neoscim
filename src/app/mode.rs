@@ -17,7 +17,7 @@ use crate::app::{
     logic::{
         calc::{CSV_EXT, CUSTOM_EXT, Grid, LEN},
         cell::CellType,
-    },
+    }, plot::Plot,
 };
 
 pub enum Mode {
@@ -198,6 +198,8 @@ impl Mode {
                     app.mode = Mode::Normal
                 }
                 "plot" => {
+                    app.plot_popup = Some(Plot::new(0, 1));
+                    return;
                     // Use gnuplot to plot the selected data.
                     // * Temp data will be stored in /tmp/
                     // * Output will either be plot.png or a name that you pass in

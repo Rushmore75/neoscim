@@ -8,11 +8,11 @@ use std::{
 
 use ratatui::{
     DefaultTerminal, Frame,
-    crossterm::event,
-    layout::{self, Constraint, Layout, Rect},
+    crossterm::event::{self, KeyCode},
+    layout::{self, Constraint, Layout, Margin, Rect},
     prelude,
     style::{Color, Modifier, Style},
-    widgets::{Paragraph, Widget},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
 
 use crate::app::{
@@ -20,6 +20,7 @@ use crate::app::{
     error_msg::StatusMessage,
     logic::{calc::Grid, cell::CellType},
     mode::Mode,
+    plot::Plot,
     screen::ScreenSpace,
 };
 
@@ -35,6 +36,7 @@ pub struct App {
     // this could probably be a normal array
     pub marks: HashMap<char, (usize, usize)>,
     pub clipboard: Clipboard,
+    pub plot_popup: Option<Plot>,
 }
 
 impl Widget for &App {
@@ -42,7 +44,7 @@ impl Widget for &App {
         let (x_max, y_max) = self.screen.how_many_cells_fit_in(&area, &self.vars);
 
         let is_selected = |x: usize, y: usize| -> bool {
-            if let Mode::Visual((mut x1, mut y1)) | Mode::VisualCmd((mut x1, mut y1), _)= self.mode {
+            if let Mode::Visual((mut x1, mut y1)) | Mode::VisualCmd((mut x1, mut y1), _) = self.mode {
                 let (mut x2, mut y2) = self.grid.cursor();
                 x1 += 1;
                 y1 += 1;
@@ -217,6 +219,7 @@ impl App {
             marks: HashMap::new(),
             clipboard: Clipboard::new(),
             file_modified_date: SystemTime::now(),
+            plot_popup: None,
         }
     }
 
@@ -315,9 +318,46 @@ impl App {
             )),
             cmd_line_debug,
         );
+
+        // popups
+        if let Some(plot) = &self.plot_popup {
+            let block = Block::default()
+                .title("Plot Editor")
+                .title_alignment(layout::Alignment::Center)
+                .border_type(ratatui::widgets::BorderType::Rounded)
+                .borders(Borders::all())
+                .style(Style::default().fg(Color::White));
+            let popup_y = 20;
+            let popup_x = 40;
+
+            let a = frame.area();
+            let xpos = (a.width / 2) - (popup_x / 2);
+            let ypos = (a.height / 2) - (popup_y / 2);
+            let area = Rect::new(xpos, ypos, popup_x, popup_y);
+
+            frame.render_widget(ratatui::widgets::Clear, area);
+            frame.render_widget(block, area);
+
+            let area = area.inner(Margin::new(1, 1));
+            frame.render_widget(plot, area);
+        }
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
+        if let Some(plot) = &mut self.plot_popup {
+            if let event::Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Esc => self.plot_popup = None,
+                    KeyCode::PrintScreen | KeyCode::Enter => unimplemented!("Generate plot data"),
+                    KeyCode::Delete => plot.del_column(),
+                    KeyCode::Insert => plot.add_column(),
+                    KeyCode::Char(c) => plot.process_key(c),
+                    _ => {}
+                }
+            }
+            return Ok(());
+        }
+
         match &mut self.mode {
             Mode::VisualCmd(pos, chord) => match event::read()? {
                 event::Event::Key(key) => match key.code {
