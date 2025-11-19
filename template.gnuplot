@@ -14,4 +14,5 @@ set grid
 set term png size 1280, 720
 set output '$OUTPUT'
 plot datafile using 1:2 with linespoints linestyle 1 
+# plot datafile using 1:2 with linespoints linestyle 1, datafile using 1:3, etc...
 replot
