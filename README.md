@@ -57,7 +57,7 @@ These commands operate on selections.
 
 | Commmand | Description |
 | - | - |
-| `:plot` | Plots the current selection to `plog.png` using gnuplot |
+| `:plot` | Plots the current selection to `plot.png` using gnuplot |
 | `:export <filename>` | Exports the current selection to a new file |
 
 ## Math / Functions
