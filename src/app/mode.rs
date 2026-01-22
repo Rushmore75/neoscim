@@ -216,10 +216,16 @@ impl Mode {
                     let s = s.replace("$OUTPUT", "/tmp/output.png");
                     let _ = fs::write("/tmp/plot.p", s);
 
-                    let _ = Command::new("gnuplot").arg("/tmp/plot.p").output();
-                    let _ = fs::copy("/tmp/output.png", output_filename);
-
-                    app.msg = StatusMessage::info("Wrote gnuplot data to /tmp");
+                    let cmd_res= Command::new("gnuplot").arg("/tmp/plot.p").output();
+                    if let Err(err) = cmd_res {
+                        match err.kind() {
+                            std::io::ErrorKind::NotFound => app.msg = StatusMessage::error("Error - Is gnuplot installed?"),
+                            _ => app.msg = StatusMessage::error(format!("{err}")),
+                        };
+                    } else {
+                        let _ = fs::copy("/tmp/output.png", output_filename);
+                        app.msg = StatusMessage::info(format!("Created {output_filename}. Artifacts are in /tmp"));
+                    }
                     app.mode = Mode::Normal
                 }
                 _ => {}

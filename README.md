@@ -51,6 +51,15 @@ Based loosely off sc-im (spreadsheet calculator improvised), which has dumb keyb
 | `:q` | Quit program |
 | `:q!` | Quit program, even if the file isn't saved |
 
+#### Visual mode commands
+
+These commands operate on selections.
+
+| Commmand | Description |
+| - | - |
+| `:plot` | Plots the current selection to `plog.png` using gnuplot |
+| `:export <filename>` | Exports the current selection to a new file |
+
 ## Math / Functions
 
 ### Math
