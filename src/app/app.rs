@@ -123,6 +123,7 @@ impl Widget for &App {
                     (false, false) => {
                         match self.grid.get_cell_raw(x_idx, y_idx) {
                             Some(cell) => {
+                                // Render in different colors based on type of contents
                                 match cell {
                                     CellType::Number(c) => display = c.to_string(),
                                     CellType::String(s) => {
@@ -149,6 +150,7 @@ impl Widget for &App {
                                     }
                                 }
 
+                                // Allow for text in one cell to visually overflow into empty cells
                                 suggest_upper_bound = Some(display.len() as u16);
                                 // check for cells to the right, see if we should truncate the cell width
                                 for i in 1..(display.len() as f32 / cell_width as f32).ceil() as usize {
@@ -165,11 +167,14 @@ impl Widget for &App {
                                     }
                                 }
                             }
+                            // Don't render blank cells
                             None => should_render = false,
                         }
 
                         if is_selected(x.into(), y.into()) {
                             style = style.bg(Color::Blue);
+                            // Make it so that cells render when selected. This fixes issue #32
+                            should_render = true;
                         }
                         if (x_idx, y_idx) == self.grid.cursor() {
                             should_render = true;
