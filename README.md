@@ -77,11 +77,11 @@ These commands operate on selections.
 
 | Identifier            | Arg Qty           | Argument Types                | Description |
 | -                     | -                 | -                             | - |
-| `avg`                 | >= 1              | Numeric        				| Returns the average of the arguments |
-| `sum`                 | >= 1              | Numbers 						| Returns the sum of the arguments |
+| `avg`                 | ≥ 1               | Numeric        				| Returns the average of the arguments |
+| `sum`                 | ≥ 1               | Numbers 						| Returns the sum of the arguments |
 | `xlookup`             | 3                 | Range, Number/String, Range 	| Searches for the number/string in the first range, returning the item at the same index in the second range |
-| `min`                 | >= 1              | Numeric                       | Returns the minimum of the arguments |
-| `max`                 | >= 1              | Numeric                       | Returns the maximum of the arguments |
+| `min`                 | ≥ 1               | Numeric                       | Returns the minimum of the arguments |
+| `max`                 | ≥ 1               | Numeric                       | Returns the maximum of the arguments |
 | `len`                 | 1                 | String/Tuple                  | Returns the character length of a string, or the amount of elements in a tuple (not recursively) |
 | `floor`               | 1               	| Numeric                       | Returns the largest integer less than or equal to a number |
 | `round`               | 1               	| Numeric                       | Returns the nearest integer to a number. Rounds half-way cases away from 0.0 |
@@ -121,7 +121,7 @@ These commands operate on selections.
 | `str::to_lowercase`   | 1               	| String                        | Returns the lower-case version of the string |
 | `str::to_uppercase`   | 1               	| String                        | Returns the upper-case version of the string |
 | `str::trim`           | 1               	| String                        | Strips whitespace from the start and the end of the string |
-| `str::from`           | >= 0            	| Any                           | Returns passed value as string |
+| `str::from`           | ≥ 0            	| Any                           | Returns passed value as string |
 | `str::substring`      | 3               	| String, Int, Int              | Returns a substring of the first argument, starting at the second argument and ending at the third argument. If the last argument is omitted, the substring extends to the end of the string |
 | `bitand`              | 2               	| Int                           | Computes the bitwise and of the given integers |
 | `bitor`               | 2               	| Int                           | Computes the bitwise or of the given integers |
@@ -141,8 +141,8 @@ If the cell can be a number (parsed into a float) it will be, if not, then if th
 
 * Cell references move with copy / paste
     * =A0: Will translate
-    * =$A0: Will translate Y only
-    * =$A0: Will translate X only
+    * =$A0: Will translate Y only (numbers)
+    * =A$0: Will translate X only (letters)
     * =$A$0: No translation
 
 * Keybinds are closer to vim keying (i/a start inserting into a cell)
