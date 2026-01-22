@@ -49,6 +49,7 @@ impl Clipboard {
         // cursor
         let (cx, cy) = into.cursor();
 
+        // iterate thru the clipbaord's cells
         for (x, row) in self.clipboard.iter().enumerate() {
             for (y, cell) in row.iter().enumerate() {
                 let idx = (x + cx, y + cy);
@@ -58,7 +59,7 @@ impl Clipboard {
                         let trans = cell.translate_cell(self.source_cell, into.cursor());
                         into.set_cell_raw(idx, Some(trans));
                     } else {
-                        // cell doesn't exist, no need to translate
+                        // The cell at this location doesn't exist (empty)
                         into.set_cell_raw::<CellType>(idx, None);
                     }
                 } else {
@@ -349,4 +350,20 @@ fn copy_paste_y_locked_var() {
     Mode::process_key(&mut app, 'p');
     let c = app.grid.get_cell("B2").as_ref().expect("Just set it");
     assert_eq!(c.to_string(), "=B$0");
+}
+
+#[test]
+fn issue_47() {
+    let mut app = App::new();
+    app.grid.set_cell("A0", 4.to_string());
+    Mode::process_key(&mut app, 'j');
+
+    app.grid.set_cell("A1", "=math::log2(A0)".to_string());
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+    Mode::process_key(&mut app, 'j');
+    Mode::process_key(&mut app, 'p');
+
+    let a = app.grid.get_cell("A2").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.to_string(), "=math::log2(A1)");
 }

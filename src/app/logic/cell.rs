@@ -54,17 +54,20 @@ impl CellType {
         }
     }
 
+    /// `replace_fn` takes the string, the old value, and then the new value.
+    /// It can be thought of as `echo $1 | sed s/$2/$3/g`
     pub fn custom_translate_cell(&self, from: (usize, usize), to: (usize, usize), replace_fn: impl Fn(&str, &str, &str) -> String) -> CellType {
         match self {
             // don't translate non-equations
             CellType::Number(_) | CellType::String(_) => return self.clone(),
             CellType::Equation(eq) => {
-                // extract all the variables
+                // Populate the context
                 let ctx = ExtractionContext::new();
                 let _ = eval_with_context(eq, &ctx);
 
-                let mut rolling = eq.clone();
+                let mut equation = eq.clone();
                 // translate standard vars A0 -> A1
+                // extract all the variables
                 for old_var in ctx.dump_vars() {
                     let mut lock_x = false;
                     let mut lock_y = false;
@@ -76,20 +79,18 @@ impl CellType {
                                 if locations[0] == 0 {
                                     // locking the X axis (A,B,C...)
                                     lock_x = true;
-                                } else if locations[0] < old_var.len() {
+                                } else {
                                     // inside the string somewhere, gonna assume this means to lock Y (1,2,3...)
                                     lock_y = true;
-
-                                } else {
-                                    // where tf is this dollar sign?
-                                    // (It's somewhere malformed, like A0$ or something)
                                 }
                             }
                             2 => {
-                                // YOLO, lock both X & Y
-                                continue; // just pretend you never even saw this var
+                                // Ignore this variable all together, effectively lockng X & Y
+                                continue; 
                             }
                             _ => {
+                                // There are 0 or >2 "$" in this string.
+                                //
                                 // Could probably optimize the code or something so you only go over the string
                                 // once, instead of contains() then getting the indexes of where it is.
                                 // You could then put your no-$ code here.
@@ -98,6 +99,7 @@ impl CellType {
                     }
                     
                     if let Some((src_x, src_y)) = Grid::parse_to_idx(&old_var) {
+                        // Use i32s instead of usize in case of negative numbers
                         let (x1, y1) = from;
                         let x1 = x1 as i32;
                         let y1 = y1 as i32;
@@ -120,6 +122,7 @@ impl CellType {
                         let alpha = Grid::num_to_char(dest_x);
                         let alpha = alpha.trim();
 
+                        // Persist the "$" locking
                         let new_var = if lock_x {
                             format!("${alpha}{dest_y}")
                         } else if lock_y {
@@ -128,15 +131,14 @@ impl CellType {
                             format!("{alpha}{dest_y}")
                         };
 
-
                         // swap out vars
-                        rolling = replace_fn(&rolling, &old_var, &new_var);
+                        equation = replace_fn(&equation, &old_var, &new_var);
                         // rolling = rolling.replace(&old_var, &new_var);
                     } else {
                         // why you coping invalid stuff, nerd?
                     }
                 }
-                return rolling.into();
+                return equation.into();
             }
         }
     }
