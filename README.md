@@ -14,8 +14,13 @@ Based loosely off sc-im (spreadsheet calculator improvised), which has dumb keyb
 | `k` | Move up |
 | `h` | Move left |
 | `l` | Move right |
-| `0` | Go to beginning of row |
-| `gg` | Go to beginning of column |
+| `0` | Go to beginning of the row |
+| `g0` | Go to beginning of the visual row |
+| `$` | Go to end of the row |
+| `g$` | Go to end of the visual row |
+| `gg` | Go to beginning of the column |
+| `G` | Go to end of column |
+| `gG` | Go to end of the the visual column |
 | `i`/`a` | Enter insert mode on current cell |
 | `r` | Enter insert mode on current cell, deleting contents |
 | `v` | Enter visual mode |
