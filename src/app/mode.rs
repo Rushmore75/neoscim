@@ -70,25 +70,11 @@ impl Mode {
                 "w" => {
                     // first try the passed argument as file
                     if let Some(arg) = args.get(1) {
-                        let mut path: PathBuf = arg.into();
-                        match path.extension() {
-                            Some(s) => {
-                                match s.to_str() {
-                                    // leave the file alone, it already has
-                                    // a valid extension
-                                    Some(CSV_EXT) | Some(CUSTOM_EXT) => {}
-                                    _ => {
-                                        path.add_extension(CUSTOM_EXT);
-                                    }
-                                }
-                            }
-                            None => {
-                                path.add_extension(CUSTOM_EXT);
-                            }
-                        };
+                        let path: PathBuf = arg.into();
 
-                        // TODO Check if the file exists, but the program wasn't opened with it. We might be accidentally overwriting something else.
-                        // let mut file = fs::OpenOptions::new().write(true).append(false).truncate(true).create(true).open(path)?;
+                        // TODO Check if the file we are writing to exists, since
+                        // this code path already knows that we are writing to a new file.
+                        // We might be accidentally overwriting something else.
 
                         if let Err(e) = app.grid.save_to(&path) {
                             app.msg = StatusMessage::error(format!("{e}"));

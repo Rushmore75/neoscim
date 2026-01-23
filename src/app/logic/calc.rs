@@ -81,7 +81,7 @@ impl Grid {
     /// Save file to `path` as a csv. Path with have `csv` appended to it if it
     /// does not already have the extension.
     pub fn save_to(&mut self, path: impl Into<PathBuf>) -> std::io::Result<()> {
-        let path = path.into();
+        let mut path = path.into();
 
         let resolve_values;
 
@@ -94,13 +94,15 @@ impl Grid {
                     resolve_values = false;
                 }
                 _ => {
-                    resolve_values = false;
-                    // path.add_extension(CUSTOM_EXT);
+                    // File as an extension but isn't ours.
+                    // Save as csv-like
+                    resolve_values = true;
                 }
             },
             None => {
+                // File has no extension. Save it as our file type
                 resolve_values = false;
-                // path.add_extension(CUSTOM_EXT);
+                path.add_extension(CUSTOM_EXT);
             }
         }
 
@@ -543,8 +545,8 @@ fn saving_neoscim() {
     assert_eq!(cell.escaped_csv_string(), "=A10^2");
 
     // set saving the file
-    let filename=  "/tmp/file.neoscim";
-    app.grid.save_to(filename).expect("This will only work on linux systems");
+    let filename = format!("/tmp/file.{CUSTOM_EXT}");
+    app.grid.save_to(&filename).expect("This will only work on linux systems");
     let mut file = fs::OpenOptions::new().read(true).open(filename).expect("Just wrote the file");
     let mut buf = String::new();
     file.read_to_string(&mut buf).expect("Just opened the file");
