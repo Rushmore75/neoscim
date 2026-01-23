@@ -5,9 +5,12 @@ use ratatui::prelude;
 use crate::app::logic::calc::LEN;
 
 pub struct ScreenSpace {
-    /// This is measured in cells
+    /// This is measured in cells.
+    /// This is the top-left cell index.
     scroll: (usize, usize),
+    /// In chars
     default_cell_len: usize,
+    /// In chars
     default_cell_hight: usize,
     /// This is measured in chars
     last_seen_screen_size: RwLock<(usize, usize)>
@@ -24,58 +27,65 @@ impl ScreenSpace {
     }
 
     pub fn center_x(&mut self, (cursor_x, _): (usize, usize), vars: &HashMap<String, String>) {
-        if let Ok(screen_size) = self.last_seen_screen_size.read() {
-            let x_cells = (screen_size.0 / self.get_cell_width(vars) as usize) -2;
-            let x_center = self.scroll_x() + (x_cells/2);
+        let (x_cells, _) = self.get_screen_size(vars);
+        let x_center = self.scroll_x() + (x_cells/2);
 
-            let delta = cursor_x as isize - x_center as isize;
-            self.scroll.0 = self.scroll.0.saturating_add_signed(delta);
-        }
+        let delta = cursor_x as isize - x_center as isize;
+        self.scroll.0 = self.scroll.0.saturating_add_signed(delta);
     }
     pub fn center_y(&mut self, (_, cursor_y): (usize, usize), vars: &HashMap<String, String>) {
-        if let Ok(screen_size) = self.last_seen_screen_size.read() {
-            let y_cells = (screen_size.1 / self.get_cell_height(vars) as usize) -2;
-            let y_center = self.scroll_y() + (y_cells/2);
+        let (_, y_cells) = self.get_screen_size(vars);
+        let y_center = self.scroll_y() + (y_cells/2);
 
-            let delta = cursor_y as isize - y_center as isize;
-            self.scroll.1 = self.scroll.1.saturating_add_signed(delta);
-        }
+        let delta = cursor_y as isize - y_center as isize;
+        self.scroll.1 = self.scroll.1.saturating_add_signed(delta);
     }
-
-    pub fn scroll_based_on_cursor_location(&mut self, (cursor_x, cursor_y): (usize, usize), vars: &HashMap<String, String>) {
+    
+    /// In chars
+    pub fn get_screen_size(&self, vars: &HashMap<String, String>) -> (usize, usize) {
         if let Ok(screen_size) = self.last_seen_screen_size.read() {
             // ======= X =======
             // screen seems to be 2 cells smaller than it should be
             // this is probably related to issue #6
             let x_cells = (screen_size.0 / self.get_cell_width(vars) as usize) -2;
-            let lower_x = self.scroll_x();
-            let upper_x = self.scroll_x() + x_cells;
-
-            if cursor_x < lower_x {
-                let delta = lower_x - cursor_x;
-                self.scroll.0 = self.scroll.0.saturating_sub(delta);
-            }
-            if cursor_x > upper_x {
-                let delta = cursor_x - upper_x;
-                self.scroll.0 = self.scroll.0.saturating_add(delta);
-            }
-
             // ======= Y =======
             // screen seems to be 2 cells smaller than it should be
             // this is probably related to issue #6
             let y_cells = (screen_size.1 / self.get_cell_height(vars) as usize) -2;
-            let lower_y = self.scroll_y();
-            let upper_y = self.scroll_y() + y_cells;
+            (x_cells,y_cells)
+        } else {
+            (0,0)
+        }
+    }
 
-            if cursor_y < lower_y {
-                let delta = lower_y - cursor_y;
-                self.scroll.1 = self.scroll.1.saturating_sub(delta);
-            }
+    pub fn scroll_based_on_cursor_location(&mut self, (cursor_x, cursor_y): (usize, usize), vars: &HashMap<String, String>) {
+        let (x_cells, y_cells) = self.get_screen_size(vars);
 
-            if cursor_y > upper_y {
-                let delta = cursor_y - upper_y;
-                self.scroll.1 = self.scroll.1.saturating_add(delta);
-            }
+
+        let lower_x = self.scroll_x();
+        let upper_x = self.scroll_x() + x_cells;
+
+        if cursor_x < lower_x {
+            let delta = lower_x - cursor_x;
+            self.scroll.0 = self.scroll.0.saturating_sub(delta);
+        }
+        if cursor_x > upper_x {
+            let delta = cursor_x - upper_x;
+            self.scroll.0 = self.scroll.0.saturating_add(delta);
+        }
+
+
+        let lower_y = self.scroll_y();
+        let upper_y = self.scroll_y() + y_cells;
+
+        if cursor_y < lower_y {
+            let delta = lower_y - cursor_y;
+            self.scroll.1 = self.scroll.1.saturating_sub(delta);
+        }
+
+        if cursor_y > upper_y {
+            let delta = cursor_y - upper_y;
+            self.scroll.1 = self.scroll.1.saturating_add(delta);
         }
     }
 

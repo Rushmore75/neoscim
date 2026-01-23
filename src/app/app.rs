@@ -18,7 +18,7 @@ use ratatui::{
 use crate::app::{
     clipboard::Clipboard,
     error_msg::StatusMessage,
-    logic::{calc::Grid, cell::CellType},
+    logic::{self, calc::Grid, cell::CellType},
     mode::Mode,
     screen::ScreenSpace,
 };
@@ -66,7 +66,9 @@ impl Widget for &App {
                 let mut style = Style::new().fg(Color::White);
 
                 // Custom width for the header of each row
-                let row_header_width: u16 = 4;
+                let row_header_width: u16 = logic::calc::LEN.to_string().len() as u16;
+                // ^^ Feels like it oculd be static but evaluating string lens doesn't work at
+                // compile time. Thus cannot be static.
                 let cell_width = self.screen.get_cell_width(&self.vars) as u16;
                 let cell_height = self.screen.get_cell_height(&self.vars) as u16;
 

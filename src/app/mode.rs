@@ -266,6 +266,18 @@ impl Mode {
                         app.grid.mv_cursor_to(0, y);
                         return;
                     }
+                    // Go to end of row
+                    '$' => {
+                        let (_, y) = app.grid.cursor();
+                        app.grid.mv_cursor_to(super::logic::calc::LEN, y);
+                        return;
+                    }
+                    // Go to bottom of column
+                    'G' => {
+                        let (x, _) = app.grid.cursor();
+                        app.grid.mv_cursor_to(x, super::logic::calc::LEN,);
+                        return;
+                    }
                     // edit cell
                     'i' | 'a' => {
                         let (x, y) = app.grid.cursor();
@@ -378,6 +390,34 @@ impl Mode {
                                 let (x, _) = app.grid.cursor();
                                 app.grid.mv_cursor_to(x, 0);
                                 app.mode = Mode::Normal;
+                            }
+                            // Go to the bottom of the current window
+                            ("g", 'G') => {
+                                let (x, _) = app.grid.cursor();
+                                let (_, y_height) = app.screen.get_screen_size(&app.vars);
+                                let y_origin = app.screen.scroll_y();
+
+                                app.grid.mv_cursor_to(x, y_origin+y_height);
+                                app.mode = Mode::Normal;
+                                return;
+                            }
+                            // Go to the right edge of the current window
+                            ("g", '$') => {
+                                let (_, y) = app.grid.cursor();
+                                let (x_width, _) = app.screen.get_screen_size(&app.vars);
+                                let x_origin = app.screen.scroll_x();
+
+                                app.grid.mv_cursor_to(x_origin+x_width, y);
+                                app.mode = Mode::Normal;
+                            }
+                            // Go to the left edge of the current window
+                            ("g", '0') => {
+                                let (_, y) = app.grid.cursor();
+                                let x_origin = app.screen.scroll_x();
+
+                                app.grid.mv_cursor_to(x_origin, y);
+                                app.mode = Mode::Normal;
+                                return;
                             }
                             // center screen to cursor
                             ("z", 'z') => {
