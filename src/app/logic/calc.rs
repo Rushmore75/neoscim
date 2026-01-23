@@ -17,7 +17,7 @@ use crate::app::{
 #[cfg(test)]
 use crate::app::app::App;
 
-pub const LEN: usize = 1000;
+pub const LEN: usize = 1001;
 pub const CSV_EXT: &str = "csv";
 pub const CUSTOM_EXT: &str = "nscim";
 

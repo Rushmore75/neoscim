@@ -65,6 +65,8 @@ impl Widget for &App {
                 let mut display = String::new();
                 let mut style = Style::new().fg(Color::White);
 
+                // Custom width for the header of each row
+                let row_header_width: u16 = 4;
                 let cell_width = self.screen.get_cell_width(&self.vars) as u16;
                 let cell_height = self.screen.get_cell_height(&self.vars) as u16;
 
@@ -95,6 +97,13 @@ impl Widget for &App {
                     // row names
                     (true, false) => {
                         display = y_idx.to_string();
+                        
+                        // center the text "99  " -> " 99 "
+                        let margin = row_header_width as i32 - display.len() as i32;
+                        let margin = margin/2;
+                        let l_margin  = (0..margin).into_iter().map(|_| ' ').collect::<String>();
+                        let r_margin = (0..(margin-(l_margin.len() as i32))).into_iter().map(|_| ' ').collect::<String>();
+                        display = format!("{l_margin}{display}{r_margin}");
 
                         let bg = if y_idx == self.grid.cursor().1 {
                             Color::DarkGray
@@ -187,10 +196,19 @@ impl Widget for &App {
                     }
                 }
                 if should_render {
-                    let x_off = area.x + (x * cell_width);
+                    let mut x_off = area.x + (x * cell_width);
                     let y_off = area.y + (y * cell_height);
 
-                    let area = if let Some(suggestion) = suggest_upper_bound {
+                    // Adjust for the fact that the first column
+                    // is smaller, since it is just headers
+                    if x > 0 {
+                        x_off = x_off - (cell_width - row_header_width);
+                    }
+
+                    // If this is the row header column
+                    let area = if x==0 && y != 0 {
+                        Rect::new(x_off, y_off, row_header_width, cell_height)
+                    } else if let Some(suggestion) = suggest_upper_bound {
                         let max_available_width = area.width - x_off;
                         // draw the biggest cell possible, without going OOB off the screen
                         let width = min(max_available_width, suggestion as u16);
