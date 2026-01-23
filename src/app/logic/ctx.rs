@@ -104,13 +104,13 @@ impl<'a> CallbackContext<'a> {
         functions.insert(
             "xlookup".to_string(),
             Function::new(|arg| {
-                let expected = vec![ValueType::Tuple, ValueType::String, ValueType::Tuple];
+                let expected = vec![ValueType::String, ValueType::Tuple, ValueType::Tuple];
                 if arg.is_tuple() {
                     let args = arg.as_tuple()?;
 
                     if args.len() == 3 {
-                        let lookup_array = &args[0];
-                        let lookup_value = &args[1];
+                        let lookup_value = &args[0];
+                        let lookup_array = &args[1];
                         let return_array = &args[2];
 
                         if lookup_array.is_tuple() && return_array.is_tuple() {

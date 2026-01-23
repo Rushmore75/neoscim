@@ -84,7 +84,7 @@ These commands operate on selections.
 | -                     | -                 | -                             | - |
 | `avg`                 | ≥ 1               | Numeric        				| Returns the average of the arguments |
 | `sum`                 | ≥ 1               | Numbers 						| Returns the sum of the arguments |
-| `xlookup`             | 3                 | Range, Number/String, Range 	| Searches for the number/string in the first range, returning the item at the same index in the second range |
+| `xlookup`             | 3                 | Number/String, Range, Range 	| Searches for the number/string in the first range, returning the item at the same index in the second range |
 | `min`                 | ≥ 1               | Numeric                       | Returns the minimum of the arguments |
 | `max`                 | ≥ 1               | Numeric                       | Returns the maximum of the arguments |
 | `len`                 | 1                 | String/Tuple                  | Returns the character length of a string, or the amount of elements in a tuple (not recursively) |

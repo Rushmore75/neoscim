@@ -788,7 +788,7 @@ fn xlookup_function() {
     grid.set_cell("A1", "Sarah".to_string());
     grid.set_cell("C0", 31.);
     grid.set_cell("C1", 41.);
-    grid.set_cell("B0", "=xlookup(A:A,\"Bobby\",C:C)".to_string());
+    grid.set_cell("B0", "=xlookup(\"Bobby\",A:A,C:C)".to_string());
     let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
