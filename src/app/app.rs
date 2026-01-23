@@ -90,6 +90,15 @@ impl Widget for &App {
                 let mut should_render = true;
                 let mut suggest_upper_bound = None;
 
+                /// Center the text "99  " -> " 99 "
+                fn center_text(text: &str, avaliable_space: i32) -> String {
+                    let margin = avaliable_space - text.len() as i32;
+                    let margin = margin/2;
+                    let l_margin  = (0..margin).into_iter().map(|_| ' ').collect::<String>();
+                    let r_margin = (0..(margin-(l_margin.len() as i32))).into_iter().map(|_| ' ').collect::<String>();
+                    format!("{l_margin}{text}{r_margin}")
+                }
+
                 match (x == 0, y == 0) {
                     // 0,0 vi mode
                     (true, true) => {
@@ -98,14 +107,7 @@ impl Widget for &App {
                     }
                     // row names
                     (true, false) => {
-                        display = y_idx.to_string();
-                        
-                        // center the text "99  " -> " 99 "
-                        let margin = row_header_width as i32 - display.len() as i32;
-                        let margin = margin/2;
-                        let l_margin  = (0..margin).into_iter().map(|_| ' ').collect::<String>();
-                        let r_margin = (0..(margin-(l_margin.len() as i32))).into_iter().map(|_| ' ').collect::<String>();
-                        display = format!("{l_margin}{display}{r_margin}");
+                        display = center_text(&y_idx.to_string(), row_header_width as i32);
 
                         let bg = if y_idx == self.grid.cursor().1 {
                             Color::DarkGray
@@ -118,7 +120,7 @@ impl Widget for &App {
                     }
                     // column names
                     (false, true) => {
-                        display = Grid::num_to_char(x_idx);
+                        display = center_text(&Grid::num_to_char(x_idx), cell_width as i32);
 
                         let bg = if x_idx == self.grid.cursor().0 {
                             Color::DarkGray
