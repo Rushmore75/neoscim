@@ -17,6 +17,11 @@ use crate::app::{
 #[cfg(test)]
 use crate::app::app::App;
 
+pub fn get_header_size() -> usize {
+    let row_header_width = LEN.to_string().len();
+    row_header_width
+}
+
 pub const LEN: usize = 1001;
 pub const CSV_EXT: &str = "csv";
 pub const CUSTOM_EXT: &str = "nscim";

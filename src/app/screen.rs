@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use ratatui::prelude;
 
-use crate::app::logic::calc::LEN;
+use crate::app::logic::calc::{self, LEN};
 
 pub struct ScreenSpace {
     /// This is measured in cells.
@@ -20,7 +20,7 @@ impl ScreenSpace {
     pub fn new() -> Self {
         Self {
             scroll: (0, 0),
-            default_cell_len: 10,
+            default_cell_len: 9,
             default_cell_hight: 1,
             last_seen_screen_size: RwLock::new((0,0))
         }
@@ -33,6 +33,7 @@ impl ScreenSpace {
         let delta = cursor_x as isize - x_center as isize;
         self.scroll.0 = self.scroll.0.saturating_add_signed(delta);
     }
+
     pub fn center_y(&mut self, (_, cursor_y): (usize, usize), vars: &HashMap<String, String>) {
         let (_, y_cells) = self.get_screen_size(vars);
         let y_center = self.scroll_y() + (y_cells/2);
@@ -92,9 +93,11 @@ impl ScreenSpace {
     pub fn scroll_x(&self) -> usize {
         self.scroll.0
     }
+
     pub fn scroll_y(&self) -> usize{
         self.scroll.1
     }
+
     pub fn get_cell_height(&self, vars: &HashMap<String, String>) -> usize {
         if let Some(h) = vars.get("height") {
             if let Ok(p) = h.parse::<usize>() {
@@ -103,6 +106,7 @@ impl ScreenSpace {
         }
         return self.default_cell_hight
     }
+    
     pub fn get_cell_width(&self, vars: &HashMap<String, String>) -> usize {
         if let Some(h) = vars.get("length") {
             if let Ok(p) = h.parse::<usize>() {
@@ -110,19 +114,34 @@ impl ScreenSpace {
             }
         }
         self.default_cell_len
+
     }
+
     pub fn how_many_cells_fit_in(&self, area: &prelude::Rect, vars: &HashMap<String, String>) -> (u16, u16) {
         if let Ok(mut l) = self.last_seen_screen_size.write() {
             l.0 = area.width as usize;
             l.1 = area.height as usize;
         }
 
+        // let width = (area.width as usize + calc::get_header_size() -1) / self.get_cell_width(vars);
+        let width = area.width as usize / self.get_cell_width(vars);
+        let height = area.height as usize / self.get_cell_height(vars);
+
         let x_max =
-            if area.width as usize / self.get_cell_width(vars) > LEN { LEN - 1 } else { area.width as usize / self.get_cell_width(vars)};
+            if width > LEN {
+                LEN - 1
+            } else {
+                width
+            };
         let y_max =
-            if area.height as usize / self.get_cell_height(vars) > LEN { LEN - 1 } else { area.height as usize / self.get_cell_height(vars)};
+            if height > LEN {
+                LEN - 1
+            } else {
+                height
+            };
         (x_max as u16, y_max as u16)
     }
+
 }
 
 #[test]
