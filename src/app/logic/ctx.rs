@@ -24,7 +24,7 @@ impl<'a> CallbackContext<'a> {
             let as_index = |s: &str| {
                 s.char_indices()
                     // .filter(|f| f.1 as u8 >= 97) // prevent sub with overflow errors
-                    .map(|(idx, c)| (c.to_ascii_lowercase() as usize - 97) + (26 * idx))
+                    .map(|(idx, c)| ((c.to_ascii_lowercase() as usize).saturating_sub(97)) + (26 * idx))
                     .fold(0, |a, b| a + b)
             };
 
@@ -162,8 +162,8 @@ impl<'a> Context for CallbackContext<'a> {
         }
 
         if let Ok(mut trail) = self.eval_breadcrumbs.write() {
-            let find = trail.iter().filter(|id| *id == identifier).collect::<Vec<&String>>();
-            if find.len() > 0 {
+            let find = trail.iter().filter(|id| *id == identifier).count();
+            if find > 0 {
                 // recursion detected
                 return None;
             } else {
@@ -195,7 +195,7 @@ impl<'a> Context for CallbackContext<'a> {
                         },
                         Err(e) => {
                             match e {
-                                EvalexprError::VariableIdentifierNotFound(_) => {
+                                EvalexprError::VariableIdentifierNotFound(_err) => {
                                     // If the variable isn't found, that's ~~probably~~ because
                                     // of recursive reference, considering all references
                                     // are grabbed straight from the table.
@@ -217,8 +217,14 @@ impl<'a> Context for CallbackContext<'a> {
                         CellType::Number(e) => vals.push(Value::Float(*e)),
                         CellType::String(s) => vals.push(Value::String(s.to_owned())),
                         CellType::Equation(eq) => {
-                            if let Ok(val) = eval_with_context(&eq[1..], self) {
-                                vals.push(val);
+                            match eval_with_context(&eq[1..], self) {
+                                Ok(val) => vals.push(val),
+                                Err(_err) => {
+                                    // At this point we are getting an error because
+                                    // recursion protection made this equation return
+                                    // None. We now don't get any evaluation.
+                                    return None
+                                },
                             }
                         }
                     }
@@ -272,6 +278,7 @@ impl ExtractionContext {
     pub fn dump_vars(&self) -> Vec<String> {
         if let Ok(r) = self.var_registry.read() { r.clone() } else { Vec::new() }
     }
+    #[allow(dead_code)]
     pub fn dump_fns(&self) -> Vec<String> {
         if let Ok(r) = self.fn_registry.read() { r.clone() } else { Vec::new() }
     }
