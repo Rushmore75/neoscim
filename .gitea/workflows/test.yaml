@@ -1,0 +1,21 @@
+name: Test Rust project
+on: [push]
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        rust: [stable]
+
+    steps:
+    - uses: https://git.oliveratkinson.net/Oliver/setup-rust-action@master
+      with:
+        rust-version: ${{ matrix.rust }}
+    - uses: actions/checkout@master
+    - name: Run tests
+      run: cargo test --verbose
+    - name: Clippy
+      run: cargo clippy
+
+
