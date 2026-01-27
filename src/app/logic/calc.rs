@@ -346,7 +346,7 @@ impl Grid {
 
     /// Only evaluates equations, such as `=10` or `=A1/C2`, not
     /// strings or numbers.
-    pub fn evaluate(&self, mut eq: &str) -> Result<f64, String> {
+    pub fn evaluate(&self, mut eq: &str) -> Result<CellType, String> {
         if eq.starts_with('=') {
             eq = &eq[1..];
         } else {
@@ -360,11 +360,15 @@ impl Grid {
             if v.is_number() {
                 if v.is_float() {
                     let val = v.as_float().expect("Value lied about being a float");
-                    return Ok(val);
+                    return Ok(CellType::Number(val));
                 } else if v.is_int() {
-                    let i = v.as_int().expect("Value lied about being an int");
-                    return Ok(i as f64);
+                    let val = v.as_int().expect("Value lied about being an int");
+                    return Ok(CellType::Number(val as f64));
                 }
+            } else if v.is_string() {
+                // ^^ This allows for functions to return a string
+                let s = v.as_string().expect("Value lied about being a String");
+                return Ok(CellType::String(s));
             }
             return Err("Result is NaN".to_string());
         };
@@ -499,11 +503,11 @@ fn saving_csv() {
     // insure that the cells are there
     let cell = app.grid.get_cell_raw(0, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.to_string()).expect("Should evaluate");
-    assert_eq!(res, 11.0);
+    assert_eq!(res, (11.0).into());
     assert_eq!(cell.escaped_csv_string(), "=A9+A$0");
     let cell = app.grid.get_cell_raw(1, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.to_string()).expect("Should evaluate");
-    assert_eq!(res, 121.0);
+    assert_eq!(res, (121.0).into());
     assert_eq!(cell.escaped_csv_string(), "=A10^2");
 
     // set saving the file
@@ -542,11 +546,11 @@ fn saving_neoscim() {
     // insure that the cells are there
     let cell = app.grid.get_cell_raw(0, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.to_string()).expect("Should evaluate");
-    assert_eq!(res, 11.0);
+    assert_eq!(res, (11.0).into());
     assert_eq!(cell.escaped_csv_string(), "=A9+A$0");
     let cell = app.grid.get_cell_raw(1, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.to_string()).expect("Should evaluate");
-    assert_eq!(res, 121.0);
+    assert_eq!(res, (121.0).into());
     assert_eq!(cell.escaped_csv_string(), "=A10^2");
 
     // set saving the file
@@ -607,31 +611,31 @@ fn valid_equations() {
     // cell math
     let cell = grid.get_cell("C0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
-    assert_eq!(res, 3.);
+    assert_eq!(res, (3.).into());
 
     // divide floats
     grid.set_cell("D0", "=5./2.".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
-    assert_eq!(res, 2.5);
+    assert_eq!(res, (2.5).into());
 
     // Float / Int mix
     grid.set_cell("D0", "=5./2".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
-    assert_eq!(res, 2.5);
+    assert_eq!(res, (2.5).into());
 
     // divide "ints" (should become floats)
     grid.set_cell("D0", "=5/2".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
-    assert_eq!(res, 2.5);
+    assert_eq!(res, (2.5).into());
 
     // Non-equation that should still be valid
     grid.set_cell("D0", "=10".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.to_string()).expect("Should be ok");
-    assert_eq!(res, 10.);
+    assert_eq!(res, (10.).into());
 }
 
 // Cell = output of Cell = value of Cells.
@@ -648,7 +652,7 @@ fn fn_of_fn() {
         let res = grid.evaluate(&cell.to_string());
 
         assert!(res.is_ok());
-        assert_eq!(res.unwrap(), 6.);
+        assert_eq!(res.unwrap(), (6.).into());
         return;
     }
     panic!("Cell not found");
@@ -684,7 +688,7 @@ fn invalid_equations() {
     let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
-    assert!(res.is_ok_and(|v| v == 10.));
+    assert!(res.is_ok_and(|v| v == (10.).into()));
 
     // Trailing comma in function call
     grid.set_cell("A0", 5.);
@@ -692,7 +696,7 @@ fn invalid_equations() {
     grid.set_cell("B0", "=avg(A0,A1,)".to_string());
     let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
-    assert_eq!(res.unwrap(), 7.5);
+    assert_eq!(res.unwrap(), (7.5).into());
 }
 
 #[test]
@@ -723,19 +727,19 @@ fn avg_function() {
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), 5.);
+    assert_eq!(res.unwrap(), (5.).into());
 
     grid.set_cell("A0", "=avg(5,10)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), 7.5);
+    assert_eq!(res.unwrap(), (7.5).into());
 
     grid.set_cell("A0", "=avg(5,10,15)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), 10.);
+    assert_eq!(res.unwrap(), (10.).into());
 
     grid.set_cell("A0", "=avg(foo)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
@@ -761,13 +765,13 @@ fn sum_function() {
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), 5.);
+    assert_eq!(res.unwrap(), (5.).into());
 
     grid.set_cell("A0", "=sum(5,10)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), 15.);
+    assert_eq!(res.unwrap(), (15.).into());
 
     grid.set_cell("A0", "=sum(foo)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
@@ -797,7 +801,7 @@ fn xlookup_function() {
     let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.to_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), 31.);
+    assert_eq!(res.unwrap(), (31.).into());
 }
 
 #[test]
@@ -875,13 +879,13 @@ fn ranges() {
     // range with numbers
     let cell = grid.get_cell("B0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
-    assert_eq!(res, 3.);
+    assert_eq!(res, (3.).into());
 
     // use range output as input for other function
     grid.set_cell("B1", "=B0*2".to_string());
     let cell = grid.get_cell("B1").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
-    assert_eq!(res, 6.);
+    assert_eq!(res, (6.).into());
 
     // use equation outputs as range input
     grid.set_cell("A2", "=C0+1".to_string());
@@ -889,11 +893,11 @@ fn ranges() {
 
     let cell = grid.get_cell("A2").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
-    assert_eq!(res, 6.);
+    assert_eq!(res, (6.).into());
 
     let cell = grid.get_cell("B0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
-    assert_eq!(res, 9.);
+    assert_eq!(res, (9.).into());
 
     // use function outputs as range input
     grid.set_cell("B1", 2.);
@@ -902,7 +906,7 @@ fn ranges() {
 
     let cell = grid.get_cell("C0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
-    assert_eq!(res, 5.);
+    assert_eq!(res, (5.).into());
 
     // use range outputs as range input
     grid.set_cell("D0", "=sum(C:C)".to_string());
@@ -910,7 +914,7 @@ fn ranges() {
 
     let cell = grid.get_cell("D0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
-    assert_eq!(res, 6.);
+    assert_eq!(res, (6.).into());
 }
 
 #[test]
@@ -1080,6 +1084,35 @@ fn cell_eval_depth() {
     assert_eq!(c.to_string(), "=A5+$A$0");
 
     let res = app.grid.evaluate(&c.to_string()).expect("Should evaluate");
-    assert_eq!(res, 7.);
+    assert_eq!(res, (7.).into());
+}
+
+#[test]
+fn return_string_from_fn() {
+    let mut grid = Grid::new();
+    grid.set_cell("A0", "=if(2>1, \"A\", \"B\")".to_string()); // true, A
+    grid.set_cell("A1", "=if(1>2, \"A\", \"B\")".to_string()); // false, B
+
+    let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
+    let res = grid.evaluate(&cell.to_string());
+    assert!(res.is_ok());
+    if let Ok(f) = res {
+        if let CellType::String(s) = f {
+            assert_eq!("A", s);
+        } else {
+            unreachable!();
+        }
+    }
+
+    let cell = grid.get_cell("A1").as_ref().expect("Just set the cell");
+    let res = grid.evaluate(&cell.to_string());
+    assert!(res.is_ok());
+    if let Ok(f) = res {
+        if let CellType::String(s) = f {
+            assert_eq!("B", s);
+        } else {
+            unreachable!();
+        }
+    }
 }
 

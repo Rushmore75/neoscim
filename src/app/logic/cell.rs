@@ -158,3 +158,15 @@ impl Display for CellType {
         write!(f, "{d}")
     }
 }
+
+impl PartialEq for CellType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Number(left), Self::Number(right)) => left == right,
+            (Self::String(left), Self::String(right)) => left == right,
+            (Self::Equation(left), Self::Equation(right)) => left == right,
+            _ => false,
+        }
+    }
+}
+
