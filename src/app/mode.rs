@@ -15,7 +15,7 @@ use crate::app::{
     app::App,
     error_msg::StatusMessage,
     logic::{
-        calc::{CSV_EXT, CUSTOM_EXT, Grid, LEN},
+        calc::{Grid, LEN},
         cell::CellType,
     },
 };

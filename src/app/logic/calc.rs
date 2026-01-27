@@ -852,6 +852,19 @@ fn parse_csv() {
 }
 
 #[test]
+fn invalid_ranges() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", 2.);
+    grid.set_cell("A1", 1.);
+    // ASCII to number conversion needs to not overflow
+    grid.set_cell("B0", "=sum($:A)".to_string());
+
+    let cell = grid.get_cell("B0").as_ref().expect("Just set it");
+    let _ = grid.evaluate(&cell.to_string()).expect("Should evaluate.");
+}
+
+#[test]
 fn ranges() {
     let mut grid = Grid::new();
 

@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use ratatui::prelude;
 
-use crate::app::logic::calc::{self, LEN};
+use crate::app::logic::calc::LEN;
 
 pub struct ScreenSpace {
     /// This is measured in cells.

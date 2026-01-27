@@ -18,7 +18,7 @@ use ratatui::{
 use crate::app::{
     clipboard::Clipboard,
     error_msg::StatusMessage,
-    logic::{self, calc::{Grid, get_header_size}, cell::CellType},
+    logic::{calc::{Grid, get_header_size}, cell::CellType},
     mode::Mode,
     screen::ScreenSpace,
 };
