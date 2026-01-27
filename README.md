@@ -2,7 +2,11 @@
 
 *New* Spreadsheet Calculator Improved
 
+![Screenshot](readme/screenshot.png)
+
 Based loosely off sc-im (spreadsheet calculator improvised), which has dumb keybinds and not many features.
+
+[Checkout a demo file](readme/demo.nscim), download, then open with `neoscim demo.nscim`.
 
 ## Keybinds
 

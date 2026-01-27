@@ -367,3 +367,21 @@ fn copy_paste_var_in_function() {
     let a = app.grid.get_cell("A2").as_ref().expect("Should've been set by paste");
     assert_eq!(a.to_string(), "=math::log2(A1)");
 }
+
+#[test]
+fn copy_paste_range_in_function() {
+    let mut app = App::new();
+    app.grid.set_cell("A0", 1.to_string());
+    app.grid.set_cell("A1", 1.to_string());
+    app.grid.set_cell("A2", 1.to_string());
+
+    app.grid.set_cell("B0", "=sum(A:A)".to_string());
+    app.grid.mv_cursor_to(1, 0);
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+    Mode::process_key(&mut app, 'l');
+    Mode::process_key(&mut app, 'p');
+
+    let a = app.grid.get_cell("C0").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.to_string(), "=sum(B:B)");
+}

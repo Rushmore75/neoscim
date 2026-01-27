@@ -1,0 +1,21 @@
+,,,
+Most of vim's movement works here as well,,,
+,,,
+,i,,
+j,Movement,l,
+,j,,
+,,,
+,"insert text with r, i, or a",,
+,,,
+1,,,
+1,Text can overflow cells,,
+1,But may get cut off if it's too long,,10
+1,,,If it reaches another cell
+1,,,
+Total:,=sum(A:A),Sum A:A,
+,=math::log2(B14),Do math on the output of another function,
+,,,
+,,,
+,,11,Number.
+,,=C18+1,Referencing the number and adding 1
+,,,Copying the cell down will translate the reference
