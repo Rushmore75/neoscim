@@ -353,7 +353,7 @@ fn copy_paste_y_locked_var() {
 }
 
 #[test]
-fn issue_47() {
+fn copy_paste_var_in_function() {
     let mut app = App::new();
     app.grid.set_cell("A0", 4.to_string());
     Mode::process_key(&mut app, 'j');

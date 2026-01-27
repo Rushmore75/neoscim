@@ -276,11 +276,19 @@ impl ExtractionContext {
         }
     }
     pub fn dump_vars(&self) -> Vec<String> {
-        if let Ok(r) = self.var_registry.read() { r.clone() } else { Vec::new() }
+        if let Ok(r) = self.var_registry.read() {
+            r.clone()
+        } else {
+            Vec::new()
+        }
     }
     #[allow(dead_code)]
     pub fn dump_fns(&self) -> Vec<String> {
-        if let Ok(r) = self.fn_registry.read() { r.clone() } else { Vec::new() }
+        if let Ok(r) = self.fn_registry.read() {
+            r.clone()
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -308,8 +316,7 @@ impl Context for ExtractionContext {
         } else {
             panic!("The RwLock should always be write-able")
         }
-        // Ok(Value::Int(1))
-        unimplemented!("Extracting function identifier not implemented yet")
+        Ok(Value::Int(1))
     }
 
     fn are_builtin_functions_disabled(&self) -> bool {

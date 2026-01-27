@@ -63,7 +63,7 @@ impl CellType {
             CellType::Equation(eq) => {
                 // Populate the context
                 let ctx = ExtractionContext::new();
-                let _ = eval_with_context(eq, &ctx);
+                let _ = eval_with_context(&eq[1..], &ctx);
 
                 let mut equation = eq.clone();
                 // translate standard vars A0 -> A1
