@@ -68,6 +68,7 @@ These commands operate on selections.
 | - | - |
 | `:plot` | Plots the current selection to `plot.png` using gnuplot |
 | `:export <filename>` | Exports the current selection to a new file |
+| `:fill <value>` | (Aliased as `f`) Fill the selection with `<value>`, special variables `x`,`y`,`xi`, and `yi` are avaliable. Variables `x` and `y` are the global coordinates of the cell, and `xi` and `yi` are the local coordinates of the selection. |
 
 ## Math / Functions
 

@@ -175,6 +175,21 @@ impl Mode {
             };
 
             match args[0] {
+                "f" | "fill" => {
+                    for (i, x) in (low_x..=hi_x).enumerate() {
+                        for (j, y) in (low_y..=hi_y).enumerate() {
+                            let arg = args.get(1)
+                                .map(|s| s.replace("xi", &i.to_string()))
+                                .map(|s| s.replace("yi", &j.to_string()))
+                                .map(|s| s.replace("x", &x.to_string()))
+                                .map(|s| s.replace("y", &y.to_string()))
+                                    ;
+                            app.grid.set_cell_raw((x,y), arg);
+                        }
+                    }
+
+                    app.mode = Mode::Normal
+                }
                 "export" => {
                     if let Some(arg1) = args.get(1) {
                         save_range(&arg1);

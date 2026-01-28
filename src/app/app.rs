@@ -63,7 +63,7 @@ impl Widget for &App {
         for x in 0..x_max {
             for y in 0..y_max {
                 let mut display = String::new();
-                let mut style = Style::new().fg(Color::White);
+                let mut style = Style::new();
 
                 // Custom width for the header of each row
                 let row_header_width = get_header_size() as u16;
@@ -148,6 +148,9 @@ impl Widget for &App {
                                             Ok(val) => {
                                                 display = val.to_string();
                                                 style = Style::new()
+                                                    .fg(Color::White)
+                                                    // TODO This breaks dumb terminals like the windows
+                                                    // terminal
                                                     .underline_color(Color::DarkGray)
                                                     .add_modifier(Modifier::UNDERLINED);
                                             }
