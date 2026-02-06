@@ -73,7 +73,10 @@ impl CellType {
                     let mut lock_y = false;
 
                     if old_var.contains('$') {
-                        let locations = old_var.char_indices().filter(|(_, c)| *c == '$').map(|(i, _)| i).collect::<Vec<usize>>();
+                        let locations = old_var
+                            .char_indices()
+                            .filter(|(_, c)| *c == '$').map(|(i, _)| i)
+                            .collect::<Vec<usize>>();
                         match locations.len() {
                             1 => {
                                 if locations[0] == 0 {
@@ -136,6 +139,40 @@ impl CellType {
                         // rolling = rolling.replace(&old_var, &new_var);
                     } else {
                         // why you coping invalid stuff, nerd?
+                        //
+                        // could be copying a range
+                        if old_var.contains(':') {
+                            let parts = old_var.split(':').collect::<Vec<&str>>();
+                            // This means the var was formatted as X:X
+                            if parts.len() == 2 {
+                                // how far is the movement?
+                                let dx = to.0 as i32 - from.0 as i32;
+
+                                let range_start = parts[0];
+                                let range_end = parts[1];
+
+                                // get the letters as numbers
+                                let xs = Grid::char_to_idx(range_start) as i32;
+                                let xe = Grid::char_to_idx(range_end) as i32;
+                                
+                                // apply movement
+                                let mut new_range_start = xs+dx;
+                                let mut new_range_end = xe+dx;
+
+                                // bottom out at 0
+                                if new_range_start < 0 {
+                                    new_range_start = 0;
+                                }
+                                if new_range_end < 0 {
+                                    new_range_end = 0;
+                                }
+
+                                // convert the index back into a letter and then submit it
+                                let start = Grid::num_to_char(new_range_start as usize);
+                                let end = Grid::num_to_char(new_range_end as usize);
+                                equation = replace_fn(&equation, &old_var, &format!("{}:{}", start.trim(), end.trim())); 
+                            }
+                        }
                     }
                 }
                 return equation.into();

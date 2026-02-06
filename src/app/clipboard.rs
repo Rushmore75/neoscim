@@ -384,4 +384,15 @@ fn copy_paste_range_in_function() {
 
     let a = app.grid.get_cell("C0").as_ref().expect("Should've been set by paste");
     assert_eq!(a.to_string(), "=sum(B:B)");
+
+    // now copy the range the other direction
+    app.grid.mv_cursor_to(2, 0);
+    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    Mode::process_key(&mut app, 'y');
+    app.grid.mv_cursor_to(1, 1);
+    Mode::process_key(&mut app, 'p');
+
+    let a = app.grid.get_cell("B1").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.to_string(), "=sum(A:A)");
+
 }

@@ -393,12 +393,22 @@ impl Grid {
         }
     }
 
+    pub fn char_to_idx(i: &str) -> usize {
+        let x_idx = i 
+            .chars()
+            .filter(|f| f.is_alphabetic())
+            .enumerate()
+            .map(|(idx, c)| ((c.to_ascii_lowercase() as usize).saturating_sub(97)) + (26 * idx))
+            .fold(0, |a, b| a + b);
+        x_idx
+    }
+
     /// Parse values in the format of A0, C10 ZZ99, etc, and
     /// turn them into an X,Y index.
     pub fn parse_to_idx(i: &str) -> Option<(usize, usize)> {
         let i = i.replace('$', "");
 
-        let chars = i.chars().take_while(|c| c.is_alphabetic()).collect::<Vec<char>>();
+        let chars = i.chars().take_while(|c| c.is_alphabetic()).collect::<String>();
         let nums = i.chars().skip(chars.len()).take_while(|c| c.is_numeric()).collect::<String>();
 
         // At least half the arguments are gone
@@ -407,11 +417,7 @@ impl Grid {
         }
 
         // get the x index from the chars
-        let x_idx = chars
-            .iter()
-            .enumerate()
-            .map(|(idx, c)| (c.to_ascii_lowercase() as usize - 97) + (26 * idx))
-            .fold(0, |a, b| a + b);
+        let x_idx = Self::char_to_idx(&chars);
 
         // get the y index from the numbers
         if let Ok(y_idx) = nums.parse::<usize>() {
@@ -591,6 +597,7 @@ fn alphanumeric_indexing() {
     assert_eq!(Grid::parse_to_idx("A"), None);
     assert_eq!(Grid::parse_to_idx(":"), None);
     assert_eq!(Grid::parse_to_idx("="), None);
+    assert_eq!(Grid::parse_to_idx("A:A"), None);
 
     assert_eq!(Grid::num_to_char(0).trim(), "A");
     assert_eq!(Grid::num_to_char(25).trim(), "Z");
