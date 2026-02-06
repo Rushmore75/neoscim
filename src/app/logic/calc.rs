@@ -485,6 +485,9 @@ impl Grid {
 
     /// Helper for tests
     #[cfg(test)]
+    /// Don't ever remove this from being just a test-helper.
+    /// This function doesn't correctly use the undo/redo api, which would require doing
+    /// transactions on the grid instead of direct access.
     pub fn set_cell<T: Into<CellType>>(&mut self, cell_id: &str, val: T) {
         if let Some(loc) = Self::parse_to_idx(cell_id) {
             self.set_cell_raw(loc, Some(val));
@@ -492,6 +495,8 @@ impl Grid {
         self.dirty = true;
     }
 
+    #[deprecated]
+    /// You should get the grid then transact on the grid it's self
     pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
         // TODO check oob
         self.get_grid_mut().set_cell_raw((x,y), val.map(|v| v.into()));
