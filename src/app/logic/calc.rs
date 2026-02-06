@@ -2,20 +2,21 @@ use std::{
     cmp::{max, min},
     fs::{self, File},
     io::{Read, Write},
-    path::PathBuf
+    path::PathBuf,
 };
 
 use evalexpr::*;
 
 use crate::app::{
     logic::{
-        cell::{CSV_DELIMITER, CellType},
-        ctx,
-    }, mode::Mode,
+        calc::internal::CellGrid, cell::{CSV_DELIMITER, CellType}, ctx
+    }
 };
 
 #[cfg(test)]
 use crate::app::app::App;
+#[cfg(test)]
+use crate::app::mode::Mode;
 
 pub fn get_header_size() -> usize {
     let row_header_width = LEN.to_string().len();
@@ -26,17 +27,106 @@ pub const LEN: usize = 1001;
 pub const CSV_EXT: &str = "csv";
 pub const CUSTOM_EXT: &str = "nscim";
 
-struct CellGrid {
-    //  a b c ...
-    // 0
-    // 1
-    // 2
-    // ...
-    cells: Vec<Vec<Option<CellType>>>,
+mod internal {
+    use crate::app::logic::{calc::LEN, cell::CellType};
+
+    #[derive(Clone)]
+    pub struct CellGrid {
+        //  a b c ...
+        // 0
+        // 1
+        // 2
+        // ...
+        cells: Vec<Vec<Option<CellType>>>,
+    }
+
+    impl CellGrid {
+        pub fn new() -> Self {
+            let mut a = Vec::with_capacity(LEN);
+            for _ in 0..LEN {
+                let mut b = Vec::with_capacity(LEN);
+                for _ in 0..LEN {
+                    b.push(None)
+                }
+                a.push(b)
+            }
+            Self { cells: a }
+        }
+
+        pub fn insert_row(&mut self, y: usize) {
+            for x in 0..LEN {
+                self.cells[x].insert(y, None);
+                self.cells[x].pop();
+            }
+        }
+
+        pub fn insert_column(&mut self, x: usize) {
+            let mut v = Vec::with_capacity(LEN);
+            for _ in 0..LEN {
+                v.push(None);
+            }
+            // let clone = self.grid_history[self.current_grid].clone();
+            self.cells.insert(x, v);
+            // keep the grid LEN
+            self.cells.pop();
+        }
+
+        pub fn get_cell_raw(&self, x: usize, y: usize) -> &Option<CellType> {
+            if x >= LEN || y >= LEN {
+                return &None;
+            }
+            &self.cells[x][y]
+        }
+        pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
+            // TODO check oob
+            self.cells[x][y] = val.map(|v| v.into());
+        }
+        /// Iterate over the entire grid and see where
+        /// the farthest modified cell is.
+        #[must_use]
+        pub fn max(&self) -> (usize, usize) {
+            let mut max_x = 0;
+            let mut max_y = 0;
+
+            for (xi, x) in self.cells.iter().enumerate() {
+                for (yi, cell) in x.iter().enumerate() {
+                    if cell.is_some() {
+                        if yi > max_y {
+                            max_y = yi
+                        }
+                        if xi > max_x {
+                            max_x = xi
+                        }
+                    }
+                }
+            }
+
+            (max_x, max_y)
+        }
+
+        #[must_use]
+        pub fn max_y_at_x(&self, x: usize) -> usize {
+            let mut max_y = 0;
+            if let Some(col) = self.cells.get(x) {
+                // we could do fancy things like .take_while(not null) but then
+                // we would have to deal with empty cells and stuff, which sounds
+                // boring. This will be fast "enough", considering the grid is
+                // probably only like 1k cells
+                for (yi, cell) in col.iter().enumerate() {
+                    if cell.is_some() {
+                        if yi > max_y {
+                            max_y = yi
+                        }
+                    }
+                }
+            }
+            max_y
+        }
+    }
 }
 
 pub struct Grid {
-    /// Which grid in history are we currently on 
+    /// Which grid in history are we currently on
     current_grid: usize,
     /// An array of grids, thru history
     grid_history: Vec<CellGrid>,
@@ -54,23 +144,9 @@ impl std::fmt::Debug for Grid {
 
 impl Grid {
     pub fn new() -> Self {
-        let mut a  = Vec::with_capacity(LEN);
-        for _ in 0..LEN {
-            let mut b = Vec::with_capacity(LEN);
-            for _ in 0..LEN {
-                b.push(None)
-            }
-            a.push(b)
-        }
+        let x = CellGrid::new();
 
-        let x = CellGrid { cells: a };
-
-        Self {
-            current_grid: 0,
-            grid_history: vec![x],
-            selected_cell: (0, 0),
-            dirty: false,
-        }
+        Self { current_grid: 0, grid_history: vec![x], selected_cell: (0, 0), dirty: false }
     }
 
     pub fn new_from_file(file: &mut File) -> std::io::Result<Self> {
@@ -122,19 +198,15 @@ impl Grid {
         }
 
         let mut f = fs::OpenOptions::new().write(true).append(false).truncate(true).create(true).open(path)?;
-        let (mx, my) = self.max();
+        let (mx, my) = self.get_grid().max();
         for y in 0..=my {
             for x in 0..=mx {
-                let cell = &self.get_grid().cells[x][y];
+                let cell = &self.get_grid().get_cell_raw(x, y);
 
                 // newline after the cell, because it's end of line.
                 // else, just put a comma after the cell.
-                let is_last = x==mx;
-                let delim = if is_last {
-                    '\n'
-                } else {
-                    CSV_DELIMITER
-                };
+                let is_last = x == mx;
+                let delim = if is_last { '\n' } else { CSV_DELIMITER };
 
                 let data = if let Some(cell) = cell {
                     if let Ok(val) = self.evaluate(&cell.to_string())
@@ -156,12 +228,23 @@ impl Grid {
         Ok(())
     }
 
-    fn get_grid<'a>(&'a self) -> &'a CellGrid {
+    pub fn get_grid<'a>(&'a self) -> &'a CellGrid {
         &self.grid_history[self.current_grid]
     }
 
     fn get_grid_mut<'a>(&'a mut self) -> &'a mut CellGrid {
         &mut self.grid_history[self.current_grid]
+    }
+
+    fn transact_on_grid<F>(&mut self, mut action: F)
+    where
+        F: FnMut(&mut CellGrid) -> (),
+    {
+        let old = self.get_grid().clone();
+        self.grid_history.push(old);
+        action(&mut self.grid_history[self.current_grid]);
+
+        self.dirty = true;
     }
 
     pub fn needs_to_be_saved(&self) -> bool {
@@ -270,99 +353,54 @@ impl Grid {
     }
 
     pub fn insert_row_above(&mut self, (_x, insertion_y): (usize, usize)) {
-        for x in 0..LEN {
-            self.get_grid_mut().cells[x].insert(insertion_y, None);
-            self.get_grid_mut().cells[x].pop();
-            for y in 0..LEN {
-                if let Some(cell) = self.get_cell_raw(x, y).as_ref().map(|f| {
-                    f.custom_translate_cell((0, 0), (0, 1), |rolling, old, new| {
-                        if let Some((_, arg_y)) = Grid::parse_to_idx(old) {
-                            if arg_y < insertion_y { rolling.to_owned() } else { rolling.replace(old, new)  }
-                        } else {
-                            unimplemented!("Invalid variable wanted to be translated")
-                        }
+        self.transact_on_grid(|grid: &mut CellGrid| {
+            grid.insert_row(insertion_y);
+            for x in 0..LEN {
+                for y in 0..LEN {
+                    if let Some(cell) = grid.get_cell_raw(x, y).as_ref().map(|f| {
+                        f.custom_translate_cell((0, 0), (0, 1), |rolling, old, new| {
+                            if let Some((_, arg_y)) = Grid::parse_to_idx(old) {
+                                if arg_y < insertion_y { rolling.to_owned() } else { rolling.replace(old, new) }
+                            } else {
+                                unimplemented!("Invalid variable wanted to be translated")
+                            }
+                        })
+                    }) {
+                        grid.set_cell_raw((x, y), Some(cell));
                     }
-                    )}) {
-                    self.set_cell_raw((x,y), Some(cell));
-                } 
-            }
-        }
-        self.dirty = true;
-    }
-    pub fn insert_row_below(&mut self, (x, y): (usize, usize)) {
-        self.insert_row_above((x,y+1));
-    }
-    pub fn insert_column_before(&mut self, (insertion_x, _y): (usize, usize)) {
-        let mut v = Vec::with_capacity(LEN);
-        for _ in 0..LEN {
-            v.push(None);
-        }
-        // let clone = self.grid_history[self.current_grid].clone();
-        self.get_grid_mut().cells.insert(insertion_x, v);
-        // keep the grid LEN
-        self.get_grid_mut().cells.pop();
-        for x in 0..LEN {
-            for y in 0..LEN {
-                if let Some(cell) = self.get_cell_raw(x, y).as_ref().map(|f| {
-                    f.custom_translate_cell((0, 0), (1, 0), |rolling, old, new| {
-                        if let Some((arg_x, _)) = Grid::parse_to_idx(old) {
-                            // add 1 because of the insertion
-                            if arg_x < insertion_x { rolling.to_owned() } else { rolling.replace(old, new) }
-                        } else {
-                            unimplemented!("Invalid variable wanted to be translated")
-                        }
-                    })
-                }) {
-                    self.set_cell_raw((x, y), Some(cell));
                 }
             }
-        }
-        self.dirty = true;
+        });
     }
+
+    pub fn insert_row_below(&mut self, (x, y): (usize, usize)) {
+        self.insert_row_above((x, y + 1));
+    }
+
+    pub fn insert_column_before(&mut self, (insertion_x, _y): (usize, usize)) {
+        self.transact_on_grid(|grid| {
+            grid.insert_column(insertion_x);
+            for x in 0..LEN {
+                for y in 0..LEN {
+                    if let Some(cell) = grid.get_cell_raw(x, y).as_ref().map(|f| {
+                        f.custom_translate_cell((0, 0), (1, 0), |rolling, old, new| {
+                            if let Some((arg_x, _)) = Grid::parse_to_idx(old) {
+                                // add 1 because of the insertion
+                                if arg_x < insertion_x { rolling.to_owned() } else { rolling.replace(old, new) }
+                            } else {
+                                unimplemented!("Invalid variable wanted to be translated")
+                            }
+                        })
+                    }) {
+                        grid.set_cell_raw((x, y), Some(cell));
+                    }
+                }
+            }
+        });
+    }
+
     pub fn insert_column_after(&mut self, (x, y): (usize, usize)) {
         self.insert_column_before((x + 1, y));
-    }
-    /// Iterate over the entire grid and see where
-    /// the farthest modified cell is.
-    #[must_use]
-    fn max(&self) -> (usize, usize) {
-        let mut max_x = 0;
-        let mut max_y = 0;
-
-        for (xi, x) in self.get_grid().cells.iter().enumerate() {
-            for (yi, cell) in x.iter().enumerate() {
-                if cell.is_some() {
-                    if yi > max_y {
-                        max_y = yi
-                    }
-                    if xi > max_x {
-                        max_x = xi
-                    }
-                }
-            }
-        }
-
-        (max_x, max_y)
-    }
-
-    #[must_use]
-    pub fn max_y_at_x(&self, x: usize) -> usize {
-        let mut max_y = 0;
-        if let Some(col) = self.get_grid().cells.get(x) {
-            // we could do fancy things like .take_while(not null) but then
-            // we would have to deal with empty cells and stuff, which sounds
-            // boring. This will be fast "enough", considering the grid is
-            // probably only like 1k cells
-            for (yi, cell) in col.iter().enumerate() {
-                if cell.is_some() {
-                    if yi > max_y {
-                        max_y = yi
-                    }
-                }
-            }
-        }
-
-        max_y
     }
 
     /// Only evaluates equations, such as `=10` or `=A1/C2`, not
@@ -402,10 +440,7 @@ impl Grid {
                 EvalexprError::VariableIdentifierNotFound(var_not_found) => {
                     return Err(format!("\"{var_not_found}\" is not a variable"));
                 }
-                EvalexprError::TypeError {
-                    expected: e,
-                    actual: a,
-                } => {
+                EvalexprError::TypeError { expected: e, actual: a } => {
                     // IE: You put a string into a function that wants a float
                     return Err(format!("Wanted {e:?}, got {a}"));
                 }
@@ -415,7 +450,7 @@ impl Grid {
     }
 
     pub fn char_to_idx(i: &str) -> usize {
-        let x_idx = i 
+        let x_idx = i
             .chars()
             .filter(|f| f.is_alphabetic())
             .enumerate()
@@ -459,7 +494,7 @@ impl Grid {
 
     pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
         // TODO check oob
-        self.get_grid_mut().cells[x][y] = val.map(|v| v.into());
+        self.get_grid_mut().set_cell_raw((x,y), val.map(|v| v.into()));
         self.dirty = true;
     }
 
@@ -478,7 +513,7 @@ impl Grid {
         if x >= LEN || y >= LEN {
             return &None;
         }
-        &self.get_grid().cells[x][y]
+        &self.get_grid().get_cell_raw(x,y)
     }
 
     pub fn num_to_char(idx: usize) -> String {
@@ -596,7 +631,7 @@ fn saving_neoscim() {
 fn cell_strings() {
     let mut grid = Grid::new();
 
-    assert!(&grid.grid_history[grid.current_grid].cells[0][0].is_none());
+    assert!(&grid.get_grid().get_cell_raw(0,0).is_none());
     grid.set_cell("A0", "Hello".to_string());
     assert!(grid.get_cell("A0").is_some());
 
@@ -733,17 +768,17 @@ fn grid_max() {
     let mut grid = Grid::new();
 
     grid.set_cell("A0", 1.);
-    let (mx, my) = grid.max();
+    let (mx, my) = grid.get_grid().max();
     assert_eq!(mx, 0);
     assert_eq!(my, 0);
 
     grid.set_cell("B0", 1.);
-    let (mx, my) = grid.max();
+    let (mx, my) = grid.get_grid().max();
     assert_eq!(mx, 1);
     assert_eq!(my, 0);
 
     grid.set_cell("B5", 1.);
-    let (mx, my) = grid.max();
+    let (mx, my) = grid.get_grid().max();
     assert_eq!(mx, 1);
     assert_eq!(my, 5);
 }
@@ -1094,7 +1129,7 @@ fn insert_row_above_3() {
 #[test]
 fn cell_eval_depth() {
     use crate::app::mode::*;
-    let mut app= App::new();
+    let mut app = App::new();
 
     app.grid.set_cell("A0", 1.);
     app.grid.set_cell("A1", "=A0+$A$0".to_string());
@@ -1144,4 +1179,3 @@ fn return_string_from_fn() {
         }
     }
 }
-
