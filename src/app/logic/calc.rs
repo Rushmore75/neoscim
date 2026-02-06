@@ -26,13 +26,20 @@ pub const LEN: usize = 1001;
 pub const CSV_EXT: &str = "csv";
 pub const CUSTOM_EXT: &str = "nscim";
 
-pub struct Grid {
+struct CellGrid {
     //  a b c ...
     // 0
     // 1
     // 2
     // ...
     cells: Vec<Vec<Option<CellType>>>,
+}
+
+pub struct Grid {
+    /// Which grid in history are we currently on 
+    current_grid: usize,
+    /// An array of grids, thru history
+    grid_history: Vec<CellGrid>,
     /// (X, Y)
     selected_cell: (usize, usize),
     /// Have unsaved modifications been made?
@@ -47,7 +54,7 @@ impl std::fmt::Debug for Grid {
 
 impl Grid {
     pub fn new() -> Self {
-        let mut a = Vec::with_capacity(LEN);
+        let mut a  = Vec::with_capacity(LEN);
         for _ in 0..LEN {
             let mut b = Vec::with_capacity(LEN);
             for _ in 0..LEN {
@@ -56,8 +63,11 @@ impl Grid {
             a.push(b)
         }
 
+        let x = CellGrid { cells: a };
+
         Self {
-            cells: a,
+            current_grid: 0,
+            grid_history: vec![x],
             selected_cell: (0, 0),
             dirty: false,
         }
@@ -115,7 +125,7 @@ impl Grid {
         let (mx, my) = self.max();
         for y in 0..=my {
             for x in 0..=mx {
-                let cell = &self.cells[x][y];
+                let cell = &self.get_grid().cells[x][y];
 
                 // newline after the cell, because it's end of line.
                 // else, just put a comma after the cell.
@@ -144,6 +154,14 @@ impl Grid {
 
         self.dirty = false;
         Ok(())
+    }
+
+    fn get_grid<'a>(&'a self) -> &'a CellGrid {
+        &self.grid_history[self.current_grid]
+    }
+
+    fn get_grid_mut<'a>(&'a mut self) -> &'a mut CellGrid {
+        &mut self.grid_history[self.current_grid]
     }
 
     pub fn needs_to_be_saved(&self) -> bool {
@@ -253,8 +271,8 @@ impl Grid {
 
     pub fn insert_row_above(&mut self, (_x, insertion_y): (usize, usize)) {
         for x in 0..LEN {
-            self.cells[x].insert(insertion_y, None);
-            self.cells[x].pop();
+            self.get_grid_mut().cells[x].insert(insertion_y, None);
+            self.get_grid_mut().cells[x].pop();
             for y in 0..LEN {
                 if let Some(cell) = self.get_cell_raw(x, y).as_ref().map(|f| {
                     f.custom_translate_cell((0, 0), (0, 1), |rolling, old, new| {
@@ -269,6 +287,7 @@ impl Grid {
                 } 
             }
         }
+        self.dirty = true;
     }
     pub fn insert_row_below(&mut self, (x, y): (usize, usize)) {
         self.insert_row_above((x,y+1));
@@ -278,9 +297,10 @@ impl Grid {
         for _ in 0..LEN {
             v.push(None);
         }
-        self.cells.insert(insertion_x, v);
+        // let clone = self.grid_history[self.current_grid].clone();
+        self.get_grid_mut().cells.insert(insertion_x, v);
         // keep the grid LEN
-        self.cells.pop();
+        self.get_grid_mut().cells.pop();
         for x in 0..LEN {
             for y in 0..LEN {
                 if let Some(cell) = self.get_cell_raw(x, y).as_ref().map(|f| {
@@ -297,6 +317,7 @@ impl Grid {
                 }
             }
         }
+        self.dirty = true;
     }
     pub fn insert_column_after(&mut self, (x, y): (usize, usize)) {
         self.insert_column_before((x + 1, y));
@@ -308,7 +329,7 @@ impl Grid {
         let mut max_x = 0;
         let mut max_y = 0;
 
-        for (xi, x) in self.cells.iter().enumerate() {
+        for (xi, x) in self.get_grid().cells.iter().enumerate() {
             for (yi, cell) in x.iter().enumerate() {
                 if cell.is_some() {
                     if yi > max_y {
@@ -327,7 +348,7 @@ impl Grid {
     #[must_use]
     pub fn max_y_at_x(&self, x: usize) -> usize {
         let mut max_y = 0;
-        if let Some(col) = self.cells.get(x) {
+        if let Some(col) = self.get_grid().cells.get(x) {
             // we could do fancy things like .take_while(not null) but then
             // we would have to deal with empty cells and stuff, which sounds
             // boring. This will be fast "enough", considering the grid is
@@ -433,11 +454,12 @@ impl Grid {
         if let Some(loc) = Self::parse_to_idx(cell_id) {
             self.set_cell_raw(loc, Some(val));
         }
+        self.dirty = true;
     }
 
     pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
         // TODO check oob
-        self.cells[x][y] = val.map(|v| v.into());
+        self.get_grid_mut().cells[x][y] = val.map(|v| v.into());
         self.dirty = true;
     }
 
@@ -456,7 +478,7 @@ impl Grid {
         if x >= LEN || y >= LEN {
             return &None;
         }
-        &self.cells[x][y]
+        &self.get_grid().cells[x][y]
     }
 
     pub fn num_to_char(idx: usize) -> String {
@@ -574,7 +596,7 @@ fn saving_neoscim() {
 fn cell_strings() {
     let mut grid = Grid::new();
 
-    assert!(&grid.cells[0][0].is_none());
+    assert!(&grid.grid_history[grid.current_grid].cells[0][0].is_none());
     grid.set_cell("A0", "Hello".to_string());
     assert!(grid.get_cell("A0").is_some());
 
