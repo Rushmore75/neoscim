@@ -236,12 +236,27 @@ impl Grid {
         &mut self.grid_history[self.current_grid]
     }
 
+    fn undo(&mut self) {
+        self.current_grid.saturating_sub(1);
+    }
+    fn redo(&mut self) {
+        self.current_grid += 1;
+    }
+
     fn transact_on_grid<F>(&mut self, mut action: F)
     where
         F: FnMut(&mut CellGrid) -> (),
     {
-        let old = self.get_grid().clone();
-        self.grid_history.push(old);
+        // push on a new reality
+        let new = self.get_grid().clone();
+        self.grid_history.push(new);
+        self.current_grid += 1;
+
+        // delete the other fork of the history
+        for i in self.current_grid+1..self.grid_history.len() {
+            self.grid_history.remove(i);
+        }
+        
         action(&mut self.grid_history[self.current_grid]);
 
         self.dirty = true;
