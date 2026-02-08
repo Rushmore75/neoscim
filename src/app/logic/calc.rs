@@ -7,10 +7,10 @@ use std::{
 
 use evalexpr::*;
 
-use crate::app::{
-    logic::{
-        calc::internal::CellGrid, cell::{CSV_DELIMITER, CellType}, ctx
-    }
+use crate::app::logic::{
+    calc::internal::CellGrid,
+    cell::{CSV_DELIMITER, CellType},
+    ctx,
 };
 
 #[cfg(test)]
@@ -154,14 +154,17 @@ impl Grid {
 
         let mut buf = String::new();
         file.read_to_string(&mut buf)?;
-        for (yi, line) in buf.lines().enumerate() {
-            let cells = Self::parse_csv_line(line);
 
-            for (xi, cell) in cells.into_iter().enumerate() {
-                // This gets automatically duck-typed
-                grid.set_cell_raw((xi, yi), cell);
+        grid.transact_on_grid(|grid| {
+            for (yi, line) in buf.lines().enumerate() {
+                let cells = Self::parse_csv_line(line);
+
+                for (xi, cell) in cells.into_iter().enumerate() {
+                    // This gets automatically duck-typed
+                    grid.set_cell_raw((xi, yi), cell);
+                }
             }
-        }
+        });
 
         // force dirty back off, we just read the data so it's gtg
         grid.dirty = false;
@@ -236,14 +239,14 @@ impl Grid {
         &mut self.grid_history[self.current_grid]
     }
 
-    fn undo(&mut self) {
-        self.current_grid.saturating_sub(1);
+    pub fn undo(&mut self) {
+        self.current_grid = self.current_grid.saturating_sub(1);
     }
-    fn redo(&mut self) {
+    pub fn redo(&mut self) {
         self.current_grid += 1;
     }
 
-    fn transact_on_grid<F>(&mut self, mut action: F)
+    pub fn transact_on_grid<F>(&mut self, mut action: F)
     where
         F: FnMut(&mut CellGrid) -> (),
     {
@@ -253,10 +256,10 @@ impl Grid {
         self.current_grid += 1;
 
         // delete the other fork of the history
-        for i in self.current_grid+1..self.grid_history.len() {
+        for i in self.current_grid + 1..self.grid_history.len() {
             self.grid_history.remove(i);
         }
-        
+
         action(&mut self.grid_history[self.current_grid]);
 
         self.dirty = true;
@@ -505,16 +508,8 @@ impl Grid {
     /// transactions on the grid instead of direct access.
     pub fn set_cell<T: Into<CellType>>(&mut self, cell_id: &str, val: T) {
         if let Some(loc) = Self::parse_to_idx(cell_id) {
-            self.set_cell_raw(loc, Some(val));
+            self.get_grid_mut().set_cell_raw(loc, Some(val))
         }
-        self.dirty = true;
-    }
-
-    #[deprecated]
-    /// You should get the grid then transact on the grid it's self
-    pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
-        // TODO check oob
-        self.get_grid_mut().set_cell_raw((x,y), val.map(|v| v.into()));
         self.dirty = true;
     }
 
@@ -533,7 +528,7 @@ impl Grid {
         if x >= LEN || y >= LEN {
             return &None;
         }
-        &self.get_grid().get_cell_raw(x,y)
+        &self.get_grid().get_cell_raw(x, y)
     }
 
     pub fn num_to_char(idx: usize) -> String {
@@ -651,7 +646,7 @@ fn saving_neoscim() {
 fn cell_strings() {
     let mut grid = Grid::new();
 
-    assert!(&grid.get_grid().get_cell_raw(0,0).is_none());
+    assert!(&grid.get_grid().get_cell_raw(0, 0).is_none());
     grid.set_cell("A0", "Hello".to_string());
     assert!(grid.get_cell("A0").is_some());
 
