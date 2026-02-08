@@ -18,12 +18,7 @@ pub struct Clipboard {
 
 impl Clipboard {
     pub fn new() -> Self {
-        Self {
-            clipboard: Vec::new(),
-            last_paste_cell: (0, 0),
-            momentum: (0, 1),
-            source_cell: (0, 0),
-        }
+        Self { clipboard: Vec::new(), last_paste_cell: (0, 0), momentum: (0, 1), source_cell: (0, 0) }
     }
 
     /// Panics if clipboard is 0 length (if you call after you
@@ -49,25 +44,28 @@ impl Clipboard {
         // cursor
         let (cx, cy) = into.cursor();
 
-        // iterate thru the clipbaord's cells
-        for (x, row) in self.clipboard.iter().enumerate() {
-            for (y, cell) in row.iter().enumerate() {
-                let idx = (x + cx, y + cy);
+        let cursor = into.cursor();
+        into.transact_on_grid(|grid| {
+            // iterate thru the clipbaord's cells
+            for (x, row) in self.clipboard.iter().enumerate() {
+                for (y, cell) in row.iter().enumerate() {
+                    let idx = (x + cx, y + cy);
 
-                if translate {
-                    if let Some(cell) = cell {
-                        let trans = cell.translate_cell(self.source_cell, into.cursor());
-                        into.set_cell_raw(idx, Some(trans));
+                    if translate {
+                        if let Some(cell) = cell {
+                            let trans = cell.translate_cell(self.source_cell, cursor);
+                            grid.set_cell_raw(idx, Some(trans));
+                        } else {
+                            // The cell at this location doesn't exist (empty)
+                            grid.set_cell_raw::<CellType>(idx, None);
+                        }
                     } else {
-                        // The cell at this location doesn't exist (empty)
-                        into.set_cell_raw::<CellType>(idx, None);
+                        // translate = false
+                        grid.set_cell_raw::<CellType>(idx, cell.clone());
                     }
-                } else {
-                    // translate = false
-                    into.set_cell_raw::<CellType>(idx, cell.clone());
                 }
             }
-        }
+        });
 
         let (lx, ly) = self.last_paste_cell;
         self.momentum = (cx as i32 - lx as i32, cy as i32 - ly as i32);
@@ -109,16 +107,19 @@ impl Clipboard {
 
         // size the clipboard appropriately
         self.clipboard.clear();
-        // clone data into clipboard
-        for x in low_x..=hi_x {
-            let mut col = Vec::new();
-            for y in low_y..=hi_y {
-                let a = from.get_cell_raw(x, y);
-                col.push(a.clone());
-                from.set_cell_raw::<CellType>((x, y), None);
+
+        from.transact_on_grid(|grid| {
+            // clone data into clipboard
+            for x in low_x..=hi_x {
+                let mut col = Vec::new();
+                for y in low_y..=hi_y {
+                    let a = grid.get_cell_raw(x, y);
+                    col.push(a.clone());
+                    grid.set_cell_raw::<CellType>((x, y), None);
+                }
+                self.clipboard.push(col);
             }
-            self.clipboard.push(col);
-        }
+        });
         self.last_paste_cell = (low_x, low_y);
     }
 }
@@ -394,5 +395,4 @@ fn copy_paste_range_in_function() {
 
     let a = app.grid.get_cell("B1").as_ref().expect("Should've been set by paste");
     assert_eq!(a.to_string(), "=sum(A:A)");
-
 }

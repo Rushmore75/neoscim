@@ -18,7 +18,10 @@ use ratatui::{
 use crate::app::{
     clipboard::Clipboard,
     error_msg::StatusMessage,
-    logic::{calc::{Grid, get_header_size}, cell::CellType},
+    logic::{
+        calc::{Grid, get_header_size},
+        cell::CellType,
+    },
     mode::Mode,
     screen::ScreenSpace,
 };
@@ -42,7 +45,7 @@ impl Widget for &App {
         let (x_max, y_max) = self.screen.how_many_cells_fit_in(&area, &self.vars);
 
         let is_selected = |x: usize, y: usize| -> bool {
-            if let Mode::Visual((mut x1, mut y1)) | Mode::VisualCmd((mut x1, mut y1), _)= self.mode {
+            if let Mode::Visual((mut x1, mut y1)) | Mode::VisualCmd((mut x1, mut y1), _) = self.mode {
                 let (mut x2, mut y2) = self.grid.cursor();
                 x1 += 1;
                 y1 += 1;
@@ -78,7 +81,7 @@ impl Widget for &App {
                 let mut x_idx: usize = 0;
                 let mut y_idx: usize = 0;
                 if x != 0 {
-                    x_idx = x as usize -1 + self.screen.scroll_x();
+                    x_idx = x as usize - 1 + self.screen.scroll_x();
                 }
                 if y != 0 {
                     y_idx = y as usize - 1 + self.screen.scroll_y();
@@ -93,9 +96,9 @@ impl Widget for &App {
                 /// Center the text "99  " -> " 99 "
                 fn center_text(text: &str, avaliable_space: i32) -> String {
                     let margin = avaliable_space - text.len() as i32;
-                    let margin = margin/2;
-                    let l_margin  = (0..margin).into_iter().map(|_| ' ').collect::<String>();
-                    let r_margin = (0..(margin-(l_margin.len() as i32))).into_iter().map(|_| ' ').collect::<String>();
+                    let margin = margin / 2;
+                    let l_margin = (0..margin).into_iter().map(|_| ' ').collect::<String>();
+                    let r_margin = (0..(margin - (l_margin.len() as i32))).into_iter().map(|_| ' ').collect::<String>();
                     format!("{l_margin}{text}{r_margin}")
                 }
 
@@ -214,7 +217,7 @@ impl Widget for &App {
                     }
 
                     // If this is the row header column
-                    let area = if x==0 && y != 0 {
+                    let area = if x == 0 && y != 0 {
                         Rect::new(x_off, y_off, row_header_width, cell_height)
                     } else if let Some(suggestion) = suggest_upper_bound {
                         let max_available_width = area.width - x_off;
@@ -387,17 +390,20 @@ impl App {
                     event::KeyCode::Enter => {
                         let v = editor.as_string();
 
-                        // try to insert as a float
-                        if let Ok(v) = v.parse::<f64>() {
-                            self.grid.set_cell_raw(self.grid.cursor(), Some(v));
-                        } else {
-                            // if you can't, then insert as a string
-                            if !v.is_empty() {
-                                self.grid.set_cell_raw(self.grid.cursor(), Some(v));
+                        let cursor = self.grid.cursor();
+                        self.grid.transact_on_grid(|grid| {
+                            // try to insert as a float
+                            if let Ok(v) = v.parse::<f64>() {
+                                grid.set_cell_raw(cursor, Some(v));
                             } else {
-                                self.grid.set_cell_raw::<CellType>(self.grid.cursor(), None);
+                                // if you can't, then insert as a string
+                                if !v.is_empty() {
+                                    grid.set_cell_raw(cursor, Some(v.to_owned()));
+                                } else {
+                                    grid.set_cell_raw::<CellType>(cursor, None);
+                                }
                             }
-                        }
+                        });
 
                         self.mode = Mode::Normal;
                     }
@@ -413,10 +419,23 @@ impl App {
             },
             Mode::Normal => match event::read()? {
                 event::Event::Key(key_event) => match key_event.code {
-                    event::KeyCode::F(_) => todo!(),
-                    event::KeyCode::Char(c) => {
-                        Mode::process_key(self, c);
-                    }
+                    event::KeyCode::F(n) => {},
+                    event::KeyCode::Char(c) => Mode::process_key(self, c),
+                    // Pretend that the arrow keys are vim movement keys
+                    event::KeyCode::Left => Mode::process_key(self, 'h'),
+                    event::KeyCode::Right => Mode::process_key(self, 'l'),
+                    event::KeyCode::Up => Mode::process_key(self, 'k'),
+                    event::KeyCode::Down => Mode::process_key(self, 'j'),
+                    // Getting ctrl to work isn't going will right now. Use page keys for the time being.
+                    event::KeyCode::PageUp => self.grid.redo(),
+                    event::KeyCode::PageDown => self.grid.undo(),
+                    event::KeyCode::Modifier(modifier_key_code) => {
+                        if let event::ModifierKeyCode::LeftControl | event::ModifierKeyCode::RightControl = modifier_key_code {
+                            // TODO my terminal (alacritty) isn't showing me ctrl presses. I know
+                            // that they work tho, since ctrl+r works here in neovim.
+                            // panic!("heard ctrl");
+                        }
+                    },
                     _ => {}
                 },
                 _ => {}

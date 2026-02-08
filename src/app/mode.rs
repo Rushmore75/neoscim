@@ -2,7 +2,8 @@ use std::{
     cmp::{max, min},
     fmt::Display,
     fs,
-    path::PathBuf, process::Command,
+    path::PathBuf,
+    process::Command,
 };
 
 use ratatui::{
@@ -153,11 +154,13 @@ impl Mode {
 
             let mut save_range = |to: &str| {
                 let mut g = Grid::new();
-                for (i, x) in (low_x..=hi_x).enumerate() {
-                    for (j, y) in (low_y..=hi_y).enumerate() {
-                        g.set_cell_raw((i, j), app.grid.get_cell_raw(x, y).clone());
+                g.transact_on_grid(|grid| {
+                    for (i, x) in (low_x..=hi_x).enumerate() {
+                        for (j, y) in (low_y..=hi_y).enumerate() {
+                            grid.set_cell_raw((i, j), grid.get_cell_raw(x, y).clone());
+                        }
                     }
-                }
+                });
                 if let Err(_e) = g.save_to(to) {
                     app.msg = StatusMessage::error("Failed to save file");
                 }
@@ -171,22 +174,24 @@ impl Mode {
                         }
                     }
                 }
-                return "unknown"
+                return "unknown";
             };
 
             match args[0] {
                 "f" | "fill" => {
-                    for (i, x) in (low_x..=hi_x).enumerate() {
-                        for (j, y) in (low_y..=hi_y).enumerate() {
-                            let arg = args.get(1)
-                                .map(|s| s.replace("xi", &i.to_string()))
-                                .map(|s| s.replace("yi", &j.to_string()))
-                                .map(|s| s.replace("x", &x.to_string()))
-                                .map(|s| s.replace("y", &y.to_string()))
-                                    ;
-                            app.grid.set_cell_raw((x,y), arg);
+                    app.grid.transact_on_grid(|grid| {
+                        for (i, x) in (low_x..=hi_x).enumerate() {
+                            for (j, y) in (low_y..=hi_y).enumerate() {
+                                let arg = args
+                                    .get(1)
+                                    .map(|s| s.replace("xi", &i.to_string()))
+                                    .map(|s| s.replace("yi", &j.to_string()))
+                                    .map(|s| s.replace("x", &x.to_string()))
+                                    .map(|s| s.replace("y", &y.to_string()));
+                                grid.set_cell_raw((x, y), arg);
+                            }
                         }
-                    }
+                    });
 
                     app.mode = Mode::Normal
                 }
@@ -202,11 +207,7 @@ impl Mode {
                     // Use gnuplot to plot the selected data.
                     // * Temp data will be stored in /tmp/
                     // * Output will either be plot.png or a name that you pass in
-                    let output_filename = if let Some(arg1) = args.get(1) {
-                        arg1
-                    } else {
-                        "plot.png"
-                    };
+                    let output_filename = if let Some(arg1) = args.get(1) { arg1 } else { "plot.png" };
 
                     save_range("/tmp/plot.csv");
                     let plot = include_str!("../../template.gnuplot");
@@ -217,10 +218,12 @@ impl Mode {
                     let s = s.replace("$OUTPUT", "/tmp/output.png");
                     let _ = fs::write("/tmp/plot.p", s);
 
-                    let cmd_res= Command::new("gnuplot").arg("/tmp/plot.p").output();
+                    let cmd_res = Command::new("gnuplot").arg("/tmp/plot.p").output();
                     if let Err(err) = cmd_res {
                         match err.kind() {
-                            std::io::ErrorKind::NotFound => app.msg = StatusMessage::error("Error - Is gnuplot installed?"),
+                            std::io::ErrorKind::NotFound => {
+                                app.msg = StatusMessage::error("Error - Is gnuplot installed?")
+                            }
                             _ => app.msg = StatusMessage::error(format!("{err}")),
                         };
                     } else {
@@ -276,7 +279,7 @@ impl Mode {
                     // Go to bottom of column
                     'G' => {
                         let (x, _) = app.grid.cursor();
-                        app.grid.mv_cursor_to(x, super::logic::calc::LEN,);
+                        app.grid.mv_cursor_to(x, super::logic::calc::LEN);
                         return;
                     }
                     // edit cell
@@ -319,6 +322,11 @@ impl Mode {
                             app.mode = Mode::Command(Chord::new(':'))
                         }
                     }
+                    // undo
+                    'u' => {
+                        app.grid.undo();
+                    }
+                    // paste
                     'p' => {
                         app.clipboard.paste(&mut app.grid, true);
                         app.grid.apply_momentum(app.clipboard.momentum());
@@ -398,7 +406,7 @@ impl Mode {
                                 let (_, y_height) = app.screen.get_screen_size(&app.vars);
                                 let y_origin = app.screen.scroll_y();
 
-                                app.grid.mv_cursor_to(x, y_origin+y_height);
+                                app.grid.mv_cursor_to(x, y_origin + y_height);
                                 app.mode = Mode::Normal;
                                 return;
                             }
@@ -408,7 +416,7 @@ impl Mode {
                                 let (x_width, _) = app.screen.get_screen_size(&app.vars);
                                 let x_origin = app.screen.scroll_x();
 
-                                app.grid.mv_cursor_to(x_origin+x_width, y);
+                                app.grid.mv_cursor_to(x_origin + x_width, y);
                                 app.mode = Mode::Normal;
                             }
                             // Go to the left edge of the current window
@@ -508,9 +516,7 @@ pub struct Chord {
 impl From<String> for Chord {
     fn from(value: String) -> Self {
         let b = value.as_bytes().iter().map(|f| *f as char).collect();
-        Chord {
-            buf: b,
-        }
+        Chord { buf: b }
     }
 }
 
@@ -519,9 +525,7 @@ impl Chord {
         let mut buf = Vec::new();
         buf.push(inital);
 
-        Self {
-            buf,
-        }
+        Self { buf }
     }
 
     pub fn backspace(&mut self) {
