@@ -419,10 +419,13 @@ impl App {
             },
             Mode::Normal => match event::read()? {
                 event::Event::Key(key_event) => match key_event.code {
-                    event::KeyCode::F(_) => todo!(),
-                    event::KeyCode::Char(c) => {
-                        Mode::process_key(self, c);
-                    }
+                    event::KeyCode::F(_) => {},
+                    event::KeyCode::Char(c) => Mode::process_key(self, c),
+                    event::KeyCode::Left => Mode::process_key(self, 'h'),
+                    event::KeyCode::Right => Mode::process_key(self, 'l'),
+                    event::KeyCode::Up => Mode::process_key(self, 'k'),
+                    event::KeyCode::Down => Mode::process_key(self, 'j'),
+                    event::KeyCode::Modifier(modifier_key_code) => todo!(),
                     _ => {}
                 },
                 _ => {}
