@@ -243,7 +243,7 @@ impl Grid {
         self.current_grid = self.current_grid.saturating_sub(1);
     }
     pub fn redo(&mut self) {
-        self.current_grid += 1;
+        self.current_grid = min(self.grid_history.len() - 1, self.current_grid + 1);
     }
 
     pub fn transact_on_grid<F>(&mut self, mut action: F)

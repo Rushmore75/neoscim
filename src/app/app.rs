@@ -419,13 +419,23 @@ impl App {
             },
             Mode::Normal => match event::read()? {
                 event::Event::Key(key_event) => match key_event.code {
-                    event::KeyCode::F(_) => {},
+                    event::KeyCode::F(n) => {},
                     event::KeyCode::Char(c) => Mode::process_key(self, c),
+                    // Pretend that the arrow keys are vim movement keys
                     event::KeyCode::Left => Mode::process_key(self, 'h'),
                     event::KeyCode::Right => Mode::process_key(self, 'l'),
                     event::KeyCode::Up => Mode::process_key(self, 'k'),
                     event::KeyCode::Down => Mode::process_key(self, 'j'),
-                    event::KeyCode::Modifier(modifier_key_code) => todo!(),
+                    // Getting ctrl to work isn't going will right now. Use page keys for the time being.
+                    event::KeyCode::PageUp => self.grid.redo(),
+                    event::KeyCode::PageDown => self.grid.undo(),
+                    event::KeyCode::Modifier(modifier_key_code) => {
+                        if let event::ModifierKeyCode::LeftControl | event::ModifierKeyCode::RightControl = modifier_key_code {
+                            // TODO my terminal (alacritty) isn't showing me ctrl presses. I know
+                            // that they work tho, since ctrl+r works here in neovim.
+                            // panic!("heard ctrl");
+                        }
+                    },
                     _ => {}
                 },
                 _ => {}
