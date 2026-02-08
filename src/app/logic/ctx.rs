@@ -20,7 +20,7 @@ impl<'a> CallbackContext<'a> {
             let mut buf = Vec::new();
 
             for x in start..=end {
-                for y in 0..=self.variables.max_y_at_x(x) {
+                for y in 0..=self.variables.get_grid().max_y_at_x(x) {
                     if let Some(s) = self.variables.get_cell_raw(x, y) {
                         buf.push(s);
                     }
