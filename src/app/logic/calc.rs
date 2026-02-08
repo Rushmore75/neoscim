@@ -270,9 +270,11 @@ impl Grid {
             }
         }
     }
+
     pub fn insert_row_below(&mut self, (x, y): (usize, usize)) {
         self.insert_row_above((x,y+1));
     }
+
     pub fn insert_column_before(&mut self, (insertion_x, _y): (usize, usize)) {
         let mut v = Vec::with_capacity(LEN);
         for _ in 0..LEN {
@@ -289,6 +291,7 @@ impl Grid {
                             // add 1 because of the insertion
                             if arg_x < insertion_x { rolling.to_owned() } else { rolling.replace(old, new) }
                         } else {
+                            // FIXME could be a range
                             unimplemented!("Invalid variable wanted to be translated")
                         }
                     })
@@ -298,6 +301,7 @@ impl Grid {
             }
         }
     }
+
     pub fn insert_column_after(&mut self, (x, y): (usize, usize)) {
         self.insert_column_before((x + 1, y));
     }
@@ -391,6 +395,20 @@ impl Grid {
                 _ => return Err(e.to_string()),
             },
         }
+    }
+
+    pub fn range_as_indices(range: &str) -> Option<(usize, usize)> {
+        let v = range.split(':').collect::<Vec<&str>>();
+        if v.len() == 2 {
+            let start_col = v[0];
+            let end_col = v[1];
+
+            let start_idx = Grid::char_to_idx(start_col);
+            let end_idx = Grid::char_to_idx(end_col);
+
+            return Some((start_idx, end_idx))
+        }
+        None
     }
 
     pub fn char_to_idx(i: &str) -> usize {
@@ -1004,6 +1022,36 @@ fn insert_col_before_3() {
 
     let cell = grid.get_cell("C0").as_ref().expect("Just set it");
     assert_eq!(cell.to_string(), "=B0*B1");
+}
+
+#[test]
+fn insert_col_before_static_range() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", 2.);
+    grid.set_cell("A1", 2.);
+    grid.set_cell("B0", "=sum(A:A)".to_string());
+
+    grid.mv_cursor_to(0, 1);
+    grid.insert_column_before(grid.cursor());
+
+    let cell = grid.get_cell("C0").as_ref().expect("Just set it");
+    assert_eq!(cell.to_string(), "=sum(A:A)");
+}
+
+#[test]
+fn insert_col_before_move_range() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("B0", 2.);
+    grid.set_cell("B1", 2.);
+    grid.set_cell("A0", "=sum(B:B)".to_string());
+
+    grid.mv_cursor_to(0, 0);
+    grid.insert_column_after(grid.cursor());
+
+    let cell = grid.get_cell("A0").as_ref().expect("Just set it");
+    assert_eq!(cell.to_string(), "=sum(C:C)");
 }
 
 #[test]

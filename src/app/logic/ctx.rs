@@ -16,24 +16,10 @@ pub struct CallbackContext<'a> {
 
 impl<'a> CallbackContext<'a> {
     fn expand_range(&self, range: &str) -> Option<Vec<&CellType>> {
-        let v = range.split(':').collect::<Vec<&str>>();
-        if v.len() == 2 {
-            let start_col = v[0];
-            let end_col = v[1];
-
-            let as_index = |s: &str| {
-                s.char_indices()
-                    // .filter(|f| f.1 as u8 >= 97) // prevent sub with overflow errors
-                    .map(|(idx, c)| ((c.to_ascii_lowercase() as usize).saturating_sub(97)) + (26 * idx))
-                    .fold(0, |a, b| a + b)
-            };
-
-            let start_idx = as_index(start_col);
-            let end_idx = as_index(end_col);
-
+        if let Some((start, end)) = Grid::range_as_indices(range) {
             let mut buf = Vec::new();
 
-            for x in start_idx..=end_idx {
+            for x in start..=end {
                 for y in 0..=self.variables.max_y_at_x(x) {
                     if let Some(s) = self.variables.get_cell_raw(x, y) {
                         buf.push(s);
