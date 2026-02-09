@@ -77,6 +77,7 @@ mod internal {
             }
             &self.cells[x][y]
         }
+
         pub fn set_cell_raw<T: Into<CellType>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
             // TODO check oob
             self.cells[x][y] = val.map(|v| v.into());
@@ -242,6 +243,7 @@ impl Grid {
     pub fn undo(&mut self) {
         self.current_grid = self.current_grid.saturating_sub(1);
     }
+
     pub fn redo(&mut self) {
         self.current_grid = min(self.grid_history.len() - 1, self.current_grid + 1);
     }
@@ -391,11 +393,9 @@ impl Grid {
         });
     }
 
-
     pub fn insert_row_below(&mut self, (x, y): (usize, usize)) {
         self.insert_row_above((x, y + 1));
     }
-
 
     pub fn insert_column_before(&mut self, (insertion_x, _y): (usize, usize)) {
         self.transact_on_grid(|grid| {
@@ -407,6 +407,20 @@ impl Grid {
                             if let Some((arg_x, _)) = Grid::parse_to_idx(old) {
                                 // add 1 because of the insertion
                                 if arg_x < insertion_x { rolling.to_owned() } else { rolling.replace(old, new) }
+                            } else if let Some((start, end)) = Grid::range_as_indices(old) {
+                                let mut range_start = Grid::num_to_char(start);
+                                let mut range_end = Grid::num_to_char(end);
+
+                                if start >= insertion_x {
+                                    range_start = Grid::num_to_char(start+1);
+                                }
+
+                                if end >= insertion_x {
+                                    range_end = Grid::num_to_char(end+1);
+                                }
+                                let new = format!("{range_start}:{range_end}");
+
+                                rolling.replace(old, &new)
                             } else {
                                 unimplemented!("Invalid variable wanted to be translated")
                             }
@@ -418,7 +432,6 @@ impl Grid {
             }
         });
     }
-
 
     pub fn insert_column_after(&mut self, (x, y): (usize, usize)) {
         self.insert_column_before((x + 1, y));
@@ -479,7 +492,7 @@ impl Grid {
             let start_idx = Grid::char_to_idx(start_col);
             let end_idx = Grid::char_to_idx(end_col);
 
-            return Some((start_idx, end_idx))
+            return Some((start_idx, end_idx));
         }
         None
     }
@@ -562,7 +575,7 @@ impl Grid {
         }
         word[1] = ((idx % 26) + 65) as u8 as char;
 
-        word.iter().collect()
+        word.iter().filter(|a| !a.is_ascii_whitespace()).collect()
     }
 }
 
@@ -688,8 +701,8 @@ fn alphanumeric_indexing() {
     assert_eq!(Grid::parse_to_idx("="), None);
     assert_eq!(Grid::parse_to_idx("A:A"), None);
 
-    assert_eq!(Grid::num_to_char(0).trim(), "A");
-    assert_eq!(Grid::num_to_char(25).trim(), "Z");
+    assert_eq!(Grid::num_to_char(0), "A");
+    assert_eq!(Grid::num_to_char(25), "Z");
     assert_eq!(Grid::num_to_char(26), "AA");
     assert_eq!(Grid::num_to_char(51), "AZ");
     assert_eq!(Grid::num_to_char(701), "ZZ");
@@ -1103,7 +1116,7 @@ fn insert_col_before_static_range() {
     grid.set_cell("A1", 2.);
     grid.set_cell("B0", "=sum(A:A)".to_string());
 
-    grid.mv_cursor_to(0, 1);
+    grid.mv_cursor_to(1, 0);
     grid.insert_column_before(grid.cursor());
 
     let cell = grid.get_cell("C0").as_ref().expect("Just set it");

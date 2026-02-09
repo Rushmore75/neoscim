@@ -37,11 +37,7 @@ impl CellType {
         }
 
         // escape string of it has a comma
-        if display.contains(CSV_DELIMITER) {
-            format!("\"{display}\"")
-        } else {
-            display
-        }
+        if display.contains(CSV_DELIMITER) { format!("\"{display}\"") } else { display }
     }
 
     fn duck_type<'a>(value: impl Into<String>) -> Self {
@@ -56,7 +52,12 @@ impl CellType {
 
     /// `replace_fn` takes the string, the old value, and then the new value.
     /// It can be thought of as `echo $1 | sed s/$2/$3/g`
-    pub fn custom_translate_cell(&self, from: (usize, usize), to: (usize, usize), replace_fn: impl Fn(&str, &str, &str) -> String) -> CellType {
+    pub fn custom_translate_cell(
+        &self,
+        from: (usize, usize),
+        to: (usize, usize),
+        replace_fn: impl Fn(&str, &str, &str) -> String,
+    ) -> CellType {
         match self {
             // don't translate non-equations
             CellType::Number(_) | CellType::String(_) => return self.clone(),
@@ -73,10 +74,8 @@ impl CellType {
                     let mut lock_y = false;
 
                     if old_var.contains('$') {
-                        let locations = old_var
-                            .char_indices()
-                            .filter(|(_, c)| *c == '$').map(|(i, _)| i)
-                            .collect::<Vec<usize>>();
+                        let locations =
+                            old_var.char_indices().filter(|(_, c)| *c == '$').map(|(i, _)| i).collect::<Vec<usize>>();
                         match locations.len() {
                             1 => {
                                 if locations[0] == 0 {
@@ -89,7 +88,7 @@ impl CellType {
                             }
                             2 => {
                                 // Ignore this variable all together, effectively lockng X & Y
-                                continue; 
+                                continue;
                             }
                             _ => {
                                 // There are 0 or >2 "$" in this string.
@@ -100,7 +99,7 @@ impl CellType {
                             }
                         }
                     }
-                    
+
                     if let Some((src_x, src_y)) = Grid::parse_to_idx(&old_var) {
                         // Use i32s instead of usize in case of negative numbers
                         let (x1, y1) = from;
@@ -110,20 +109,11 @@ impl CellType {
                         let x2 = x2 as i32;
                         let y2 = y2 as i32;
 
-                        let dest_x = if lock_x {
-                            src_x as usize
-                        } else {
-                            (src_x as i32 + (x2 - x1)) as usize
-                        };
+                        let dest_x = if lock_x { src_x as usize } else { (src_x as i32 + (x2 - x1)) as usize };
 
-                        let dest_y = if lock_y {
-                            src_y as usize
-                        } else {
-                            (src_y as i32 + (y2 - y1)) as usize
-                        };
+                        let dest_y = if lock_y { src_y as usize } else { (src_y as i32 + (y2 - y1)) as usize };
 
                         let alpha = Grid::num_to_char(dest_x);
-                        let alpha = alpha.trim();
 
                         // Persist the "$" locking
                         let new_var = if lock_x {
@@ -141,37 +131,29 @@ impl CellType {
                         // why you coping invalid stuff, nerd?
                         //
                         // could be copying a range
-                        if old_var.contains(':') {
-                            let parts = old_var.split(':').collect::<Vec<&str>>();
-                            // This means the var was formatted as X:X
-                            if parts.len() == 2 {
-                                // how far is the movement?
-                                let dx = to.0 as i32 - from.0 as i32;
+                        if let Some(parts) = Grid::range_as_indices(&old_var) {
+                            // how far is the movement?
+                            let dx = to.0 as i32 - from.0 as i32;
 
-                                let range_start = parts[0];
-                                let range_end = parts[1];
+                            let xs = parts.0 as i32;
+                            let xe = parts.1 as i32;
 
-                                // get the letters as numbers
-                                let xs = Grid::char_to_idx(range_start) as i32;
-                                let xe = Grid::char_to_idx(range_end) as i32;
-                                
-                                // apply movement
-                                let mut new_range_start = xs+dx;
-                                let mut new_range_end = xe+dx;
+                            // apply movement
+                            let mut new_range_start = xs + dx;
+                            let mut new_range_end = xe + dx;
 
-                                // bottom out at 0
-                                if new_range_start < 0 {
-                                    new_range_start = 0;
-                                }
-                                if new_range_end < 0 {
-                                    new_range_end = 0;
-                                }
-
-                                // convert the index back into a letter and then submit it
-                                let start = Grid::num_to_char(new_range_start as usize);
-                                let end = Grid::num_to_char(new_range_end as usize);
-                                equation = replace_fn(&equation, &old_var, &format!("{}:{}", start.trim(), end.trim())); 
+                            // bottom out at 0
+                            if new_range_start < 0 {
+                                new_range_start = 0;
                             }
+                            if new_range_end < 0 {
+                                new_range_end = 0;
+                            }
+
+                            // convert the index back into a letter and then submit it
+                            let start = Grid::num_to_char(new_range_start as usize);
+                            let end = Grid::num_to_char(new_range_end as usize);
+                            equation = replace_fn(&equation, &old_var, &format!("{start}:{end}"));
                         }
                     }
                 }
@@ -181,7 +163,7 @@ impl CellType {
     }
 
     pub fn translate_cell(&self, from: (usize, usize), to: (usize, usize)) -> CellType {
-        self.custom_translate_cell(from, to, |a,b,c| a.replace(b, c))
+        self.custom_translate_cell(from, to, |a, b, c| a.replace(b, c))
     }
 }
 
@@ -206,4 +188,3 @@ impl PartialEq for CellType {
         }
     }
 }
-
