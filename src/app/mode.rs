@@ -273,13 +273,13 @@ impl Mode {
                     // Go to end of row
                     '$' => {
                         let (_, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(super::logic::calc::LEN, y);
+                        app.grid.mv_cursor_to(super::logic::calc::LEN-1, y);
                         return;
                     }
                     // Go to bottom of column
                     'G' => {
                         let (x, _) = app.grid.cursor();
-                        app.grid.mv_cursor_to(x, super::logic::calc::LEN);
+                        app.grid.mv_cursor_to(x, super::logic::calc::LEN-1);
                         return;
                     }
                     // edit cell
