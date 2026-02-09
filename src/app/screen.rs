@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::RwLock};
+use std::{cmp::min, collections::HashMap, sync::RwLock};
 
 use ratatui::prelude;
 
@@ -123,22 +123,12 @@ impl ScreenSpace {
             l.1 = area.height as usize;
         }
 
-        // let width = (area.width as usize + calc::get_header_size() -1) / self.get_cell_width(vars);
-        let width = area.width as usize / self.get_cell_width(vars);
+        let width = (area.width as usize / self.get_cell_width(vars)) + 1;
         let height = area.height as usize / self.get_cell_height(vars);
 
-        let x_max =
-            if width > LEN {
-                LEN - 1
-            } else {
-                width
-            };
-        let y_max =
-            if height > LEN {
-                LEN - 1
-            } else {
-                height
-            };
+        let x_max = min(LEN-1, width);
+        let y_max = min(LEN-1, height);
+
         (x_max as u16, y_max as u16)
     }
 

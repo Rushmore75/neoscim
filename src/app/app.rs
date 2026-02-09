@@ -19,7 +19,7 @@ use crate::app::{
     clipboard::Clipboard,
     error_msg::StatusMessage,
     logic::{
-        calc::{Grid, get_header_size},
+        calc::{Grid, LEN, get_header_size},
         cell::CellType,
     },
     mode::Mode,
@@ -122,6 +122,11 @@ impl Widget for &App {
                 }
                 if y != 0 {
                     y_idx = y as usize - 1 + self.screen.scroll_y();
+                }
+
+                // don't render non-accessible cells
+                if x_idx > LEN-1 {
+                    continue;
                 }
 
                 const ORANGE1: Color = Color::Rgb(200, 160, 0);
