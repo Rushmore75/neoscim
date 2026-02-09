@@ -326,6 +326,8 @@ impl App {
         let cmd_line_left = cmd_line_split[0];
         let cmd_line_status = cmd_line_split[1];
         let cmd_line_right = cmd_line_split[2];
+
+        #[cfg(debug_assertions)]
         let cmd_line_debug = cmd_line_split[3];
         // ======================================================
 

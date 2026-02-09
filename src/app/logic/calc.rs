@@ -236,10 +236,6 @@ impl Grid {
         &self.grid_history[self.current_grid]
     }
 
-    fn get_grid_mut<'a>(&'a mut self) -> &'a mut CellGrid {
-        &mut self.grid_history[self.current_grid]
-    }
-
     pub fn undo(&mut self) {
         self.current_grid = self.current_grid.saturating_sub(1);
     }
@@ -381,8 +377,15 @@ impl Grid {
                         f.custom_translate_cell((0, 0), (0, 1), |rolling, old, new| {
                             if let Some((_, arg_y)) = Grid::parse_to_idx(old) {
                                 if arg_y < insertion_y { rolling.to_owned() } else { rolling.replace(old, new) }
+                            } else if let Some(_) = Grid::range_as_indices(old) {
+                                // ranges are  not changed when moved vertically
+                                rolling.to_string()
                             } else {
-                                unimplemented!("Invalid variable wanted to be translated")
+                                #[cfg(debug_assertions)]
+                                unimplemented!("Invalid variable wanted to be translated");
+
+                                #[cfg(not(debug_assertions))]
+                                rolling.to_string()
                             }
                         })
                     }) {
@@ -422,7 +425,11 @@ impl Grid {
 
                                 rolling.replace(old, &new)
                             } else {
-                                unimplemented!("Invalid variable wanted to be translated")
+                                #[cfg(debug_assertions)]
+                                unimplemented!("Invalid variable wanted to be translated");
+
+                                #[cfg(not(debug_assertions))]
+                                rolling.to_string()
                             }
                         })
                     }) {
@@ -533,12 +540,11 @@ impl Grid {
 
     /// Helper for tests
     #[cfg(test)]
-    /// Don't ever remove this from being just a test-helper.
-    /// This function doesn't correctly use the undo/redo api, which would require doing
-    /// transactions on the grid instead of direct access.
-    pub fn set_cell<T: Into<CellType>>(&mut self, cell_id: &str, val: T) {
+    pub fn set_cell<T: Into<CellType> + Clone>(&mut self, cell_id: &str, val: T) {
         if let Some(loc) = Self::parse_to_idx(cell_id) {
-            self.get_grid_mut().set_cell_raw(loc, Some(val))
+            self.transact_on_grid(|grid| {
+                grid.set_cell_raw(loc, Some(val.clone()));
+            });
         }
         self.dirty = true;
     }
@@ -1136,6 +1142,36 @@ fn insert_col_before_move_range() {
 
     let cell = grid.get_cell("A0").as_ref().expect("Just set it");
     assert_eq!(cell.to_string(), "=sum(C:C)");
+}
+
+#[test]
+fn insert_row_before_static_range() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", 2.);
+    grid.set_cell("A1", 2.);
+    grid.set_cell("B0", "=sum(A:A)".to_string());
+
+    grid.mv_cursor_to(0, 0);
+    grid.insert_row_above(grid.cursor());
+
+    let cell = grid.get_cell("B1").as_ref().expect("Just set it");
+    assert_eq!(cell.to_string(), "=sum(A:A)");
+}
+
+#[test]
+fn insert_row_before_move_range() {
+    let mut grid = Grid::new();
+
+    grid.set_cell("A0", 2.);
+    grid.set_cell("A1", 2.);
+    grid.set_cell("B0", "=sum(A:A)".to_string());
+
+    grid.mv_cursor_to(0, 0);
+    grid.insert_row_below(grid.cursor());
+
+    let cell = grid.get_cell("B0").as_ref().expect("Just set it");
+    assert_eq!(cell.to_string(), "=sum(A:A)");
 }
 
 #[test]
