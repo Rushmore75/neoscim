@@ -48,11 +48,11 @@ impl ScreenSpace {
             // ======= X =======
             // screen seems to be 2 cells smaller than it should be
             // this is probably related to issue #6
-            let x_cells = (screen_size.0 / self.get_cell_width(vars) as usize) -2;
+            let x_cells = (screen_size.0 / self.get_cell_width(vars)) -2;
             // ======= Y =======
             // screen seems to be 2 cells smaller than it should be
             // this is probably related to issue #6
-            let y_cells = (screen_size.1 / self.get_cell_height(vars) as usize) -2;
+            let y_cells = (screen_size.1 / self.get_cell_height(vars)) -2;
             (x_cells,y_cells)
         } else {
             (0,0)

@@ -47,7 +47,7 @@ impl Widget for &StatusMessage {
         let msg = if self.start.elapsed().as_secs() > 3 {
             String::new()
         } else {
-            self.msg.clone().unwrap_or(String::new())
+            self.msg.clone().unwrap_or_default()
         };
 
         let style = match self.msg_type {

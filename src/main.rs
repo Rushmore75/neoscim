@@ -1,3 +1,10 @@
+#![allow(clippy::needless_return)]
+#![allow(clippy::len_zero)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::collapsible_match)]
+#![allow(clippy::single_match)]
+
 mod app;
 
 use std::env::args;

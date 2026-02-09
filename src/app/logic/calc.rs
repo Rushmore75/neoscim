@@ -19,8 +19,7 @@ use crate::app::app::App;
 use crate::app::mode::Mode;
 
 pub fn get_header_size() -> usize {
-    let row_header_width = LEN.to_string().len();
-    row_header_width
+    LEN.to_string().len()
 }
 
 pub const LEN: usize = 1001;
@@ -216,7 +215,7 @@ impl Grid {
                     if let Ok(val) = self.evaluate(&cell.to_string())
                         && resolve_values
                     {
-                        format!("{}{}", val.to_string(), delim)
+                        format!("{val}{delim}")
                     } else {
                         format!("{}{}", cell.escaped_csv_string(), delim)
                     }
@@ -232,7 +231,7 @@ impl Grid {
         Ok(())
     }
 
-    pub fn get_grid<'a>(&'a self) -> &'a CellGrid {
+    pub fn get_grid(&self) -> &CellGrid {
         &self.grid_history[self.current_grid]
     }
 
@@ -246,7 +245,7 @@ impl Grid {
 
     pub fn transact_on_grid<F>(&mut self, mut action: F)
     where
-        F: FnMut(&mut CellGrid) -> (),
+        F: FnMut(&mut CellGrid),
     {
         // push on a new reality
         let new = self.get_grid().clone();
@@ -377,7 +376,7 @@ impl Grid {
                         f.custom_translate_cell((0, 0), (0, 1), |rolling, old, new| {
                             if let Some((_, arg_y)) = Grid::parse_to_idx(old) {
                                 if arg_y < insertion_y { rolling.to_owned() } else { rolling.replace(old, new) }
-                            } else if let Some(_) = Grid::range_as_indices(old) {
+                            } else if Grid::range_as_indices(old).is_some() {
                                 // ranges are  not changed when moved vertically
                                 rolling.to_string()
                             } else {
@@ -454,7 +453,7 @@ impl Grid {
             return Err(format!("\"{eq}\" is not an equation"));
         }
 
-        let ctx = ctx::CallbackContext::new(&self);
+        let ctx = ctx::CallbackContext::new(self);
 
         let prep_for_return = |v: Value| {
             if v.is_number() {
@@ -505,13 +504,12 @@ impl Grid {
     }
 
     pub fn char_to_idx(i: &str) -> usize {
-        let x_idx = i
+        i
             .chars()
             .filter(|f| f.is_alphabetic())
             .enumerate()
             .map(|(idx, c)| ((c.to_ascii_lowercase() as usize).saturating_sub(97)) + (26 * idx))
-            .fold(0, |a, b| a + b);
-        x_idx
+            .sum()
     }
 
     /// Parse values in the format of A0, C10 ZZ99, etc, and
@@ -564,7 +562,7 @@ impl Grid {
         if x >= LEN || y >= LEN {
             return &None;
         }
-        &self.get_grid().get_cell_raw(x, y)
+        self.get_grid().get_cell_raw(x, y)
     }
 
     pub fn num_to_char(idx: usize) -> String {

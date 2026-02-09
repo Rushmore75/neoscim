@@ -87,7 +87,7 @@ impl Mode {
                                 path.file_name().map(|f| f.to_str().unwrap_or("n/a")).unwrap_or("n/a")
                             ));
 
-                            if let None = app.file {
+                            if app.file.is_none() {
                                 app.file = Some(path)
                             }
                         }
@@ -197,7 +197,7 @@ impl Mode {
                 }
                 "export" => {
                     if let Some(arg1) = args.get(1) {
-                        save_range(&arg1);
+                        save_range(arg1);
                     } else {
                         app.msg = StatusMessage::error("export <path.csv>")
                     }
@@ -286,7 +286,7 @@ impl Mode {
                     'i' | 'a' => {
                         let (x, y) = app.grid.cursor();
 
-                        let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or(String::new());
+                        let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or_default();
 
                         app.mode = Mode::Insert(Chord::from(val));
                     }
@@ -477,14 +477,12 @@ impl Mode {
         let len = match &self {
             Mode::Insert(edit) | Mode::VisualCmd(_, edit) | Mode::Command(edit) | Mode::Chord(edit) => edit.len(),
             Mode::Normal => {
-                let len = cell.as_ref().map(|f| f.to_string().len()).unwrap_or_default();
-                len
+                cell.as_ref().map(|f| f.to_string().len()).unwrap_or_default()
             }
             Mode::Visual(_) => 0,
         };
         // min 20 chars, expand if needed
-        let len = max(len as u16 + 1, 20);
-        len
+        max(len as u16 + 1, 20)
     }
 
     pub fn render(&self, f: &mut ratatui::Frame, area: prelude::Rect, cell: &Option<CellType>) {
@@ -498,8 +496,7 @@ impl Mode {
             Mode::Chord(chord) => f.render_widget(chord, area),
             Mode::Normal => f.render_widget(
                 Paragraph::new({
-                    let cell = cell.as_ref().map(|f| f.to_string()).unwrap_or_default();
-                    cell
+                    cell.as_ref().map(|f| f.to_string()).unwrap_or_default()
                 }),
                 area,
             ),
@@ -522,8 +519,7 @@ impl From<String> for Chord {
 
 impl Chord {
     pub fn new(inital: char) -> Self {
-        let mut buf = Vec::new();
-        buf.push(inital);
+        let buf = vec![inital];
 
         Self { buf }
     }

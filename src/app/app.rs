@@ -97,8 +97,8 @@ impl Widget for &App {
                 fn center_text(text: &str, avaliable_space: i32) -> String {
                     let margin = avaliable_space - text.len() as i32;
                     let margin = margin / 2;
-                    let l_margin = (0..margin).into_iter().map(|_| ' ').collect::<String>();
-                    let r_margin = (0..(margin - (l_margin.len() as i32))).into_iter().map(|_| ' ').collect::<String>();
+                    let l_margin = (0..margin).map(|_| ' ').collect::<String>();
+                    let r_margin = (0..(margin - (l_margin.len() as i32))).map(|_| ' ').collect::<String>();
                     format!("{l_margin}{text}{r_margin}")
                 }
 
@@ -114,7 +114,7 @@ impl Widget for &App {
 
                         let bg = if y_idx == self.grid.cursor().1 {
                             Color::DarkGray
-                        } else if y_idx % 2 == 0 {
+                        } else if y_idx.is_multiple_of(2) {
                             ORANGE1
                         } else {
                             ORANGE2
@@ -127,7 +127,7 @@ impl Widget for &App {
 
                         let bg = if x_idx == self.grid.cursor().0 {
                             Color::DarkGray
-                        } else if x_idx % 2 == 0 {
+                        } else if x_idx.is_multiple_of(2) {
                             ORANGE1
                         } else {
                             ORANGE2
@@ -173,7 +173,7 @@ impl Widget for &App {
                                 suggest_upper_bound = Some(display.len() as u16);
                                 // check for cells to the right, see if we should truncate the cell width
                                 for i in 1..(display.len() as f32 / cell_width as f32).ceil() as usize {
-                                    if let Some(_) = self.grid.get_cell_raw(x_idx + i, y_idx) {
+                                    if self.grid.get_cell_raw(x_idx + i, y_idx).is_some() {
                                         suggest_upper_bound = Some(cell_width * i as u16);
                                         break;
                                     }
@@ -222,7 +222,7 @@ impl Widget for &App {
                     } else if let Some(suggestion) = suggest_upper_bound {
                         let max_available_width = area.width - x_off;
                         // draw the biggest cell possible, without going OOB off the screen
-                        let width = min(max_available_width, suggestion as u16);
+                        let width = min(max_available_width, suggestion);
                         // Don't draw too small tho, we want full-sized cells, minium
                         let width = max(cell_width, width);
 
@@ -280,22 +280,19 @@ impl App {
     }
 
     fn file_name_display(&self) -> String {
-        let file_name_status = {
-            let mut file_name = "[No Name]";
-            let mut icon = "";
-            if let Some(file) = &self.file {
-                if let Some(f) = file.file_name() {
-                    if let Some(f) = f.to_str() {
-                        file_name = f;
-                    }
+        let mut file_name = "[No Name]";
+        let mut icon = "";
+        if let Some(file) = &self.file {
+            if let Some(f) = file.file_name() {
+                if let Some(f) = f.to_str() {
+                    file_name = f;
                 }
             }
-            if self.grid.needs_to_be_saved() {
-                icon = "[+]";
-            }
-            format!("{file_name}{icon}")
-        };
-        file_name_status
+        }
+        if self.grid.needs_to_be_saved() {
+            icon = "[+]";
+        }
+        format!("{file_name}{icon}")
     }
 
     fn draw(&self, frame: &mut Frame) {
@@ -362,7 +359,7 @@ impl App {
                     event::KeyCode::Char(c) => chord.add_char(c),
                     event::KeyCode::Enter => {
                         // tmp is to get around reference issues.
-                        let tmp = pos.clone();
+                        let tmp = *pos;
                         Mode::process_cmd(self);
                         self.mode = Mode::Visual(tmp)
                     }
@@ -421,7 +418,7 @@ impl App {
             },
             Mode::Normal => match event::read()? {
                 event::Event::Key(key_event) => match key_event.code {
-                    event::KeyCode::F(n) => {},
+                    event::KeyCode::F(_n) => {}
                     event::KeyCode::Char(c) => Mode::process_key(self, c),
                     // Pretend that the arrow keys are vim movement keys
                     event::KeyCode::Left => Mode::process_key(self, 'h'),
@@ -432,12 +429,14 @@ impl App {
                     event::KeyCode::PageUp => self.grid.redo(),
                     event::KeyCode::PageDown => self.grid.undo(),
                     event::KeyCode::Modifier(modifier_key_code) => {
-                        if let event::ModifierKeyCode::LeftControl | event::ModifierKeyCode::RightControl = modifier_key_code {
+                        if let event::ModifierKeyCode::LeftControl | event::ModifierKeyCode::RightControl =
+                            modifier_key_code
+                        {
                             // TODO my terminal (alacritty) isn't showing me ctrl presses. I know
                             // that they work tho, since ctrl+r works here in neovim.
                             // panic!("heard ctrl");
                         }
-                    },
+                    }
                     _ => {}
                 },
                 _ => {}

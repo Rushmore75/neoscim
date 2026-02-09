@@ -11,15 +11,15 @@ pub enum CellType {
     Equation(String),
 }
 
-impl Into<CellType> for f64 {
-    fn into(self) -> CellType {
-        CellType::duck_type(self.to_string())
+impl From<f64> for CellType {
+    fn from(value: f64) -> Self {
+        CellType::duck_type(value.to_string())
     }
 }
 
-impl Into<CellType> for String {
-    fn into(self) -> CellType {
-        CellType::duck_type(self)
+impl From<String> for CellType {
+    fn from(value: String) -> Self {
+        CellType::duck_type(value)
     }
 }
 
@@ -40,7 +40,7 @@ impl CellType {
         if display.contains(CSV_DELIMITER) { format!("\"{display}\"") } else { display }
     }
 
-    fn duck_type<'a>(value: impl Into<String>) -> Self {
+    fn duck_type(value: impl Into<String>) -> Self {
         let value = value.into();
 
         if let Ok(parse) = value.parse::<f64>() {
@@ -109,9 +109,9 @@ impl CellType {
                         let x2 = x2 as i32;
                         let y2 = y2 as i32;
 
-                        let dest_x = if lock_x { src_x as usize } else { (src_x as i32 + (x2 - x1)) as usize };
+                        let dest_x = if lock_x { src_x } else { (src_x as i32 + (x2 - x1)) as usize };
 
-                        let dest_y = if lock_y { src_y as usize } else { (src_y as i32 + (y2 - y1)) as usize };
+                        let dest_y = if lock_y { src_y } else { (src_y as i32 + (y2 - y1)) as usize };
 
                         let alpha = Grid::num_to_char(dest_x);
 
