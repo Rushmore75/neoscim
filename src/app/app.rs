@@ -42,9 +42,11 @@ pub struct App {
 
 impl Widget for &App {
     fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
+        // let now = std::time::Instant::now();
+
         let (x_max, y_max) = self.screen.how_many_cells_fit_in(&area, &self.vars);
 
-        let is_selected = |x: usize, y: usize| -> bool {
+        let is_visually_selected = |x: usize, y: usize| -> bool {
             if let Mode::Visual((mut x1, mut y1)) | Mode::VisualCmd((mut x1, mut y1), _) = self.mode {
                 let (mut x2, mut y2) = self.grid.cursor();
                 x1 += 1;
@@ -63,17 +65,52 @@ impl Widget for &App {
             false
         };
 
+        // cells that are related by reference to the cursor's cell
+        // (inputs to formulas and such)
+        let cells_of_interest: Vec<(usize, usize)> = {
+            let ctx = crate::app::logic::ctx::ExtractionContext::new();
+            let (x, y) = self.grid.cursor();
+            if let Some(cell) = self.grid.get_cell_raw(x, y) {
+                if let CellType::Equation(eq) = cell {
+                    let _ = evalexpr::eval_with_context(&eq[1..], &ctx);
+                    let vars = ctx.dump_vars();
+
+                    let mut interest = Vec::new();
+                    for var in vars {
+                        if let Some(a) = Grid::parse_to_idx(&var) {
+                            interest.push(a);
+                        } else if let Some((start, end)) = Grid::range_as_indices(&var) {
+                            // insert coords:
+                            // (start, 0..len)
+                            // ..
+                            // (end, 0..len)
+                            for x in start..=end {
+                                for y in 0..=super::logic::calc::LEN {
+                                    interest.push((x,y))
+                                }
+                            }
+                        }
+                    }
+                    interest
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        };
+
+        // Custom width for the header of each row
+        let row_header_width = get_header_size() as u16;
+        // ^^ Feels like it oculd be static but evaluating string lens doesn't work at
+        // compile time. Thus cannot be static.
+        let cell_width = self.screen.get_cell_width(&self.vars) as u16;
+        let cell_height = self.screen.get_cell_height(&self.vars) as u16;
+
         for x in 0..x_max {
             for y in 0..y_max {
                 let mut display = String::new();
                 let mut style = Style::new();
-
-                // Custom width for the header of each row
-                let row_header_width = get_header_size() as u16;
-                // ^^ Feels like it oculd be static but evaluating string lens doesn't work at
-                // compile time. Thus cannot be static.
-                let cell_width = self.screen.get_cell_width(&self.vars) as u16;
-                let cell_height = self.screen.get_cell_height(&self.vars) as u16;
 
                 // Minus 1 because of header cells,
                 // the grid is shifted over (1,1), so if you need
@@ -169,6 +206,7 @@ impl Widget for &App {
                                     }
                                 }
 
+                                // ===================================================
                                 // Allow for text in one cell to visually overflow into empty cells
                                 suggest_upper_bound = Some(display.len() as u16);
                                 // check for cells to the right, see if we should truncate the cell width
@@ -185,18 +223,25 @@ impl Widget for &App {
                                         display.push('…');
                                     }
                                 }
+                                // ===================================================
                             }
                             // Don't render blank cells
                             None => should_render = false,
                         }
 
-                        if is_selected(x.into(), y.into()) {
+                        if cells_of_interest.contains(&(x_idx, y_idx)) {
+                            style = style.fg(Color::Yellow);
+                            should_render = true;
+                        }
+
+                        if is_visually_selected(x.into(), y.into()) {
                             style = style.bg(Color::Blue);
                             // Make it so that cells render when selected. This fixes issue #32
                             should_render = true;
                         }
                         if (x_idx, y_idx) == self.grid.cursor() {
                             should_render = true;
+
                             style = Style::new().fg(Color::Black).bg(Color::White);
                             // modify the style of the cell you are editing
                             if let Mode::Insert(_) = self.mode {
@@ -235,6 +280,9 @@ impl Widget for &App {
                 }
             }
         }
+
+        // let ns = now.elapsed().as_nanos() as f64;
+        // eprintln!("Rendered in {}ms", ns/1_000_000.);
     }
 }
 
