@@ -762,15 +762,17 @@ fn fn_of_fn() {
     grid.set_cell("B0", 1.);
     grid.set_cell("C0", "=A0+B0".to_string());
     grid.set_cell("D0", "=C0*2".to_string());
+    
+    let cell = grid.get_cell("D0");
+    assert!(cell.is_some());
 
-    if let Some(cell) = grid.get_cell("D0") {
+    if let Some(cell) = cell {
         let res = grid.evaluate(&cell.to_string());
 
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), (6.).into());
         return;
     }
-    panic!("Cell not found");
 }
 
 // Two cells that have a circular dependency to solve for a value
@@ -780,12 +782,14 @@ fn circular_reference_cells() {
     grid.set_cell("A0", "=B0".to_string());
     grid.set_cell("B0", "=A0".to_string());
 
-    if let Some(cell) = grid.get_cell("A0") {
+    let cell = grid.get_cell("A0");
+    assert!(cell.is_some());
+
+    if let Some(cell) = cell {
         let res = grid.evaluate(&cell.to_string());
         assert!(res.is_err());
         return;
     }
-    panic!("Cell not found");
 }
 
 #[test]

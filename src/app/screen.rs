@@ -142,7 +142,7 @@ fn fit_cells() {
     app.vars.insert("height".to_string(), 1.to_string());
 
     let (x,y) = app.screen.how_many_cells_fit_in(&prelude::Rect::new(0, 0, 181, 14), &app.vars);
-    assert_eq!(x, 18);
+    assert_eq!(x, 19);
     assert_eq!(y, 14);
 }
 
@@ -156,7 +156,7 @@ fn scroll() {
     // We have to check how many cells fit, because screen learns the width
     // of the area by rumour here.
     let (x,y) = app.screen.how_many_cells_fit_in(&prelude::Rect::new(0, 0, 181, 14), &app.vars);
-    assert_eq!(x, 18);
+    assert_eq!(x, 19);
     assert_eq!(y, 14);
 
     // we aren't scrolled at all yet

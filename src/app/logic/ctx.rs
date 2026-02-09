@@ -188,7 +188,14 @@ impl<'a> Context for CallbackContext<'a> {
                                     return None;
                                 }
 
-                                e => panic!("> Error {e}\n> Equation: '{eq}'"),
+                                e => {
+                                    let msg = format!("> Error {e}\n> Equation: '{eq}'");
+                                    #[cfg(debug_assertions)]
+                                    panic!("{msg}");
+
+                                    #[cfg(not(debug_assertions))]
+                                    eprintln!(msg)
+                                },
                             }
                         }
                     }
