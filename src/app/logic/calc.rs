@@ -489,6 +489,8 @@ impl Grid {
         }
     }
 
+    /// Gets the indices of the range labels.
+    /// A:B -> (0,1)
     pub fn range_as_indices(range: &str) -> Option<(usize, usize)> {
         let v = range.split(':').collect::<Vec<&str>>();
         if v.len() == 2 {
