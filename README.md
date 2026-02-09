@@ -25,6 +25,8 @@ Based loosely off sc-im (spreadsheet calculator improvised), which has dumb keyb
 | `gg` | Go to beginning of the column |
 | `G` | Go to end of column |
 | `gG` | Go to end of the the visual column |
+| `u`/`Page Down` | Undo[^undo] |
+| `Page Up` | Redo[^undo] |
 | `i`/`a` | Enter insert mode on current cell |
 | `r` | Enter insert mode on current cell, deleting contents |
 | `v` | Enter visual mode |
@@ -42,6 +44,8 @@ Based loosely off sc-im (spreadsheet calculator improvised), which has dumb keyb
 | `'`X | Jump to cell "X" |
 | n`G` | Jump to row "n" |
 | nX | Press "X", "n" times |
+
+[^undo]: Page up/down keybinds are (probably) temporary until I can get ctrl+r to work for redo, which is the propper key for this action. See issue #25 for the status on this.
 
 ### Visual mode
 
