@@ -194,7 +194,7 @@ impl<'a> Context for CallbackContext<'a> {
                                     panic!("{msg}");
 
                                     #[cfg(not(debug_assertions))]
-                                    eprintln!(msg)
+                                    eprintln!("{msg}");
                                 },
                             }
                         }
