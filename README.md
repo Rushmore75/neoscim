@@ -8,6 +8,21 @@ Based loosely off sc-im (spreadsheet calculator improvised), which has dumb keyb
 
 [Checkout a demo file](readme/demo.nscim), download, then open with `neoscim demo.nscim`.
 
+## Installation
+
+1. Make sure you have `cargo` installed. This can be done with [the "offical" way](https://rust-lang.org/tools/install/),
+or slightly easier if you are [using arch](https://archlinux.org/packages/?name=rust)
+
+2. Clone and build
+```bash
+git clone https://git.oliveratkinson.net/Oliver/neoscim.git
+cd neoscim
+cargo build -r
+```
+3. Copy to somewhere on your `$PATH`.
+Personally, I link (`ln -s`) the file to my `~/.local/bin/` directory.
+But putting it in `/opt/neoscim/` would also be a standard location.
+
 ## Keybinds
 
 ### Normal mode
