@@ -10,6 +10,24 @@ Based loosely off sc-im (spreadsheet calculator improvised), which has dumb keyb
 
 ## Installation
 
+### Bianary Install
+
+1. Go to the [latest action](https://git.oliveratkinson.net/Oliver/neoscim/actions).
+
+2. Click on the top run that is green (means all the tests passed, etc.)
+
+3. Download the "artifact" (called neoscim) on the left-hand side.
+
+4. Unzip and make the file exectuable:
+```bash
+unzip neoscim.zip
+chmod +x neoscim
+```
+
+5. Put somewhere on your `$PATH`
+
+### Building
+
 1. Make sure you have `cargo` installed. This can be done with [the "offical" way](https://rust-lang.org/tools/install/),
 or slightly easier if you are [using arch](https://archlinux.org/packages/?name=rust)
 
