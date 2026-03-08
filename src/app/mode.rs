@@ -1,5 +1,5 @@
 use std::{
-    cmp::{max, min},
+    cmp::min,
     fmt::Display,
     fs,
     path::PathBuf,
@@ -13,21 +13,20 @@ use ratatui::{
 };
 
 use crate::app::{
-    app::App,
+    app::{App, GridType},
     error_msg::StatusMessage,
     logic::{
-        calc::{Grid, LEN},
-        cell::CellType,
+        cell::Cell, grid::{GRID_LEN, Grid}
     },
 };
 
 pub enum Mode {
-    Insert(Chord),
-    Chord(Chord),
+    Insert(EditBuffer),
+    Chord(EditBuffer),
     Normal,
-    Command(Chord),
+    Command(EditBuffer),
     Visual((usize, usize)),
-    VisualCmd((usize, usize), Chord),
+    VisualCmd((usize, usize), EditBuffer),
 }
 
 impl Display for Mode {
@@ -68,6 +67,12 @@ impl Mode {
             }
 
             match args[0] {
+                "format" => {
+                    app.grid_type = GridType::Formatting
+                },
+                "edit" => {
+                    app.grid_type = GridType::Values
+                },
                 "w" => {
                     // first try the passed argument as file
                     if let Some(arg) = args.get(1) {
@@ -188,7 +193,7 @@ impl Mode {
                                     .map(|s| s.replace("yi", &j.to_string()))
                                     .map(|s| s.replace("x", &x.to_string()))
                                     .map(|s| s.replace("y", &y.to_string()));
-                                grid.set_cell_raw((x, y), arg);
+                                grid.merge_in_data((x, y), arg, &app.grid_type);
                             }
                         }
                     });
@@ -250,7 +255,7 @@ impl Mode {
                     // v
                     'j' => {
                         let (x, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(x, min(y.saturating_add(1), LEN - 1));
+                        app.grid.mv_cursor_to(x, min(y.saturating_add(1), GRID_LEN- 1));
                         return;
                     }
                     // ^
@@ -262,7 +267,7 @@ impl Mode {
                     // >
                     'l' => {
                         let (x, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(min(x.saturating_add(1), LEN - 1), y);
+                        app.grid.mv_cursor_to(min(x.saturating_add(1), GRID_LEN- 1), y);
                         return;
                     }
                     '0' => {
@@ -273,26 +278,31 @@ impl Mode {
                     // Go to end of row
                     '$' => {
                         let (_, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(super::logic::calc::LEN-1, y);
+                        app.grid.mv_cursor_to(GRID_LEN-1, y);
                         return;
                     }
                     // Go to bottom of column
                     'G' => {
                         let (x, _) = app.grid.cursor();
-                        app.grid.mv_cursor_to(x, super::logic::calc::LEN-1);
+                        app.grid.mv_cursor_to(x, GRID_LEN-1);
                         return;
                     }
                     // edit cell
                     'i' | 'a' => {
                         let (x, y) = app.grid.cursor();
 
-                        let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or_default();
+                        let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| {
+                            match app.grid_type {
+                                GridType::Values => f.value_string(),
+                                GridType::Formatting => f.format_string(),
+                            }
+                        }).unwrap_or_default();
 
-                        app.mode = Mode::Insert(Chord::from(val));
+                        app.mode = Mode::Insert(EditBuffer::from(val));
                     }
                     // replace cell
                     'r' => {
-                        app.mode = Mode::Insert(Chord::from(String::new()));
+                        app.mode = Mode::Insert(EditBuffer::from(String::new()));
                     }
                     // insert column before
                     'I' => {
@@ -317,9 +327,9 @@ impl Mode {
                     'v' => app.mode = Mode::Visual(app.grid.cursor()),
                     ':' => {
                         if let Self::Visual(pos) = app.mode {
-                            app.mode = Mode::VisualCmd(pos, Chord::new(':'));
+                            app.mode = Mode::VisualCmd(pos, EditBuffer::new(':'));
                         } else {
-                            app.mode = Mode::Command(Chord::new(':'))
+                            app.mode = Mode::Command(EditBuffer::new(':'))
                         }
                     }
                     // undo
@@ -335,7 +345,7 @@ impl Mode {
                     // loose chars will put you into chord mode
                     c => {
                         if let Mode::Normal = app.mode {
-                            app.mode = Mode::Chord(Chord::new(c))
+                            app.mode = Mode::Chord(EditBuffer::new(c))
                         }
                     }
                 }
@@ -362,7 +372,7 @@ impl Mode {
 
                 // the chord starts with a :, send it over to be a command
                 if chord.buf[0] == ':' {
-                    app.mode = Mode::Command(Chord::new(':'));
+                    app.mode = Mode::Command(EditBuffer::new(':'));
                     return;
                 }
 
@@ -473,19 +483,7 @@ impl Mode {
         }
     }
 
-    pub fn chars_to_display(&self, cell: &Option<CellType>) -> u16 {
-        let len = match &self {
-            Mode::Insert(edit) | Mode::VisualCmd(_, edit) | Mode::Command(edit) | Mode::Chord(edit) => edit.len(),
-            Mode::Normal => {
-                cell.as_ref().map(|f| f.to_string().len()).unwrap_or_default()
-            }
-            Mode::Visual(_) => 0,
-        };
-        // min 20 chars, expand if needed
-        max(len as u16 + 1, 20)
-    }
-
-    pub fn render(&self, f: &mut ratatui::Frame, area: prelude::Rect, cell: &Option<CellType>) {
+    pub fn render(&self, f: &mut ratatui::Frame, area: prelude::Rect, cell: &Option<Cell>) {
         match &self {
             Mode::Insert(editor) => {
                 f.render_widget(editor, area);
@@ -496,7 +494,7 @@ impl Mode {
             Mode::Chord(chord) => f.render_widget(chord, area),
             Mode::Normal => f.render_widget(
                 Paragraph::new({
-                    cell.as_ref().map(|f| f.to_string()).unwrap_or_default()
+                    cell.as_ref().map(|f| f.value_string()).unwrap_or_default()
                 }),
                 area,
             ),
@@ -506,18 +504,18 @@ impl Mode {
     }
 }
 
-pub struct Chord {
+pub struct EditBuffer {
     buf: Vec<char>,
 }
 
-impl From<String> for Chord {
+impl From<String> for EditBuffer {
     fn from(value: String) -> Self {
         let b = value.as_bytes().iter().map(|f| *f as char).collect();
-        Chord { buf: b }
+        EditBuffer { buf: b }
     }
 }
 
-impl Chord {
+impl EditBuffer {
     pub fn new(inital: char) -> Self {
         let buf = vec![inital];
 
@@ -540,7 +538,7 @@ impl Chord {
     }
 }
 
-impl Widget for &Chord {
+impl Widget for &EditBuffer {
     fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
         Paragraph::new(self.buf.iter().collect::<String>()).render(area, buf);
     }
@@ -573,7 +571,7 @@ fn keybinds() {
     assert_eq!(app.grid.cursor(), (1, 1));
 
     // gg
-    app.mode = Mode::Chord(Chord::new('g'));
+    app.mode = Mode::Chord(EditBuffer::new('g'));
     Mode::process_key(&mut app, 'g');
     assert_eq!(app.grid.cursor(), (1, 0));
 
@@ -585,7 +583,7 @@ fn keybinds() {
     // 10l
     // this should mean all the directions work
     app.grid.mv_cursor_to(0, 0);
-    app.mode = Mode::Chord(Chord::new('1'));
+    app.mode = Mode::Chord(EditBuffer::new('1'));
     Mode::process_key(&mut app, '0');
     Mode::process_key(&mut app, 'l');
     assert_eq!(app.grid.cursor(), (10, 0));

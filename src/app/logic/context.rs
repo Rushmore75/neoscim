@@ -2,7 +2,10 @@ use std::{collections::HashMap, sync::RwLock};
 
 use evalexpr::{error::EvalexprResultValue, *};
 
-use crate::app::logic::{calc::Grid, cell::CellType};
+use crate::app::logic::{
+    cell::{Cell, CellType},
+    grid::Grid,
+};
 
 pub struct CallbackContext<'a> {
     variables: &'a Grid,
@@ -15,7 +18,7 @@ pub struct CallbackContext<'a> {
 }
 
 impl<'a> CallbackContext<'a> {
-    fn expand_range(&self, range: &str) -> Option<Vec<&CellType>> {
+    fn expand_range(&self, range: &str) -> Option<Vec<&Cell>> {
         if let Some((start, end)) = Grid::range_as_indices(range) {
             let mut buf = Vec::new();
 
@@ -53,10 +56,7 @@ impl<'a> CallbackContext<'a> {
                 } else if arg.is_float() {
                     Ok(Value::Float(arg.as_float()?))
                 } else {
-                    Err(EvalexprError::TypeError {
-                        expected: vec![ValueType::Float],
-                        actual: arg.clone(),
-                    })
+                    Err(EvalexprError::TypeError { expected: vec![ValueType::Float], actual: arg.clone() })
                 }
             }),
         );
@@ -79,10 +79,7 @@ impl<'a> CallbackContext<'a> {
                 } else if arg.is_float() {
                     Ok(Value::Float(arg.as_float()?))
                 } else {
-                    Err(EvalexprError::TypeError {
-                        expected: vec![ValueType::Float],
-                        actual: arg.clone(),
-                    })
+                    Err(EvalexprError::TypeError { expected: vec![ValueType::Float], actual: arg.clone() })
                 }
             }),
         );
@@ -114,10 +111,7 @@ impl<'a> CallbackContext<'a> {
                         }
                     }
                 }
-                Err(EvalexprError::TypeError {
-                    expected,
-                    actual: arg.clone(),
-                })
+                Err(EvalexprError::TypeError { expected, actual: arg.clone() })
             }),
         );
 
@@ -139,7 +133,6 @@ impl<'a> Context for CallbackContext<'a> {
     type NumericTypes = DefaultNumericTypes;
 
     fn get_value(&self, identifier: &str) -> Option<Value<Self::NumericTypes>> {
-        
         // check cache
         if let Ok(cc) = self.compute_cache.read() {
             if let Some(hit) = cc.get(identifier) {
@@ -153,7 +146,7 @@ impl<'a> Context for CallbackContext<'a> {
                 // recursion detected
                 return None;
             } else {
-                trail.push(identifier.to_owned(), );
+                trail.push(identifier.to_owned());
             }
         }
 
@@ -165,37 +158,37 @@ impl<'a> Context for CallbackContext<'a> {
         };
 
         if let Some(v) = self.variables.get_cell(identifier) {
-            match v {
-                CellType::Number(n) => {
-                    return pre_return(Value::Float(n.to_owned()));
-                },
-                CellType::String(s) => {
-                    return pre_return(Value::String(s.to_owned()));
-                },
-                CellType::Equation(eq) => {
-                    // remove the equals sign from the beginning, as that
-                    // tries to set variables with our evaluation lib
-                    match eval_with_context(&eq[1..], self) {
-                        Ok(e) => {
-                            return pre_return(e)
-                        },
-                        Err(e) => {
-                            match e {
-                                EvalexprError::VariableIdentifierNotFound(_err) => {
-                                    // If the variable isn't found, that's ~~probably~~ because
-                                    // of recursive reference, considering all references
-                                    // are grabbed straight from the table.
-                                    return None;
+            if let Some(v) = &v.value {
+                match v {
+                    CellType::Number(n) => {
+                        return pre_return(Value::Float(n.to_owned()));
+                    }
+                    CellType::String(s) => {
+                        return pre_return(Value::String(s.to_owned()));
+                    }
+                    CellType::Equation(eq) => {
+                        // remove the equals sign from the beginning, as that
+                        // tries to set variables with our evaluation lib
+                        match eval_with_context(&eq[1..], self) {
+                            Ok(e) => return pre_return(e),
+                            Err(e) => {
+                                match e {
+                                    EvalexprError::VariableIdentifierNotFound(_err) => {
+                                        // If the variable isn't found, that's ~~probably~~ because
+                                        // of recursive reference, considering all references
+                                        // are grabbed straight from the table.
+                                        return None;
+                                    }
+
+                                    e => {
+                                        let msg = format!("> Error {e}\n> Equation: '{eq}'");
+                                        #[cfg(debug_assertions)]
+                                        panic!("{msg}");
+
+                                        #[cfg(not(debug_assertions))]
+                                        eprintln!("{msg}");
+                                    }
                                 }
-
-                                e => {
-                                    let msg = format!("> Error {e}\n> Equation: '{eq}'");
-                                    #[cfg(debug_assertions)]
-                                    panic!("{msg}");
-
-                                    #[cfg(not(debug_assertions))]
-                                    eprintln!("{msg}");
-                                },
                             }
                         }
                     }
@@ -206,18 +199,20 @@ impl<'a> Context for CallbackContext<'a> {
             if let Some(range) = self.expand_range(identifier) {
                 let mut vals = Vec::new();
                 for cell in range {
-                    match cell {
-                        CellType::Number(e) => vals.push(Value::Float(*e)),
-                        CellType::String(s) => vals.push(Value::String(s.to_owned())),
-                        CellType::Equation(eq) => {
-                            match eval_with_context(&eq[1..], self) {
-                                Ok(val) => vals.push(val),
-                                Err(_err) => {
-                                    // At this point we are getting an error because
-                                    // recursion protection made this equation return
-                                    // None. We now don't get any evaluation.
-                                    return None
-                                },
+                    if let Some(v) = &cell.value {
+                        match v {
+                            CellType::Number(e) => vals.push(Value::Float(*e)),
+                            CellType::String(s) => vals.push(Value::String(s.to_owned())),
+                            CellType::Equation(eq) => {
+                                match eval_with_context(&eq[1..], self) {
+                                    Ok(val) => vals.push(val),
+                                    Err(_err) => {
+                                        // At this point we are getting an error because
+                                        // recursion protection made this equation return
+                                        // None. We now don't get any evaluation.
+                                        return None;
+                                    }
+                                }
                             }
                         }
                     }
@@ -263,25 +258,14 @@ pub struct ExtractionContext {
 
 impl ExtractionContext {
     pub fn new() -> Self {
-        Self {
-            var_registry: RwLock::new(Vec::new()),
-            fn_registry: RwLock::new(Vec::new()),
-        }
+        Self { var_registry: RwLock::new(Vec::new()), fn_registry: RwLock::new(Vec::new()) }
     }
     pub fn dump_vars(&self) -> Vec<String> {
-        if let Ok(r) = self.var_registry.read() {
-            r.clone()
-        } else {
-            Vec::new()
-        }
+        if let Ok(r) = self.var_registry.read() { r.clone() } else { Vec::new() }
     }
     #[allow(dead_code)]
     pub fn dump_fns(&self) -> Vec<String> {
-        if let Ok(r) = self.fn_registry.read() {
-            r.clone()
-        } else {
-            Vec::new()
-        }
+        if let Ok(r) = self.fn_registry.read() { r.clone() } else { Vec::new() }
     }
 }
 

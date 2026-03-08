@@ -19,16 +19,23 @@ use crate::app::{
     clipboard::Clipboard,
     error_msg::StatusMessage,
     logic::{
-        calc::{Grid, LEN, get_header_size},
-        cell::CellType,
+        cell::{Cell, CellType},
+        context::ExtractionContext,
+        grid::{GRID_LEN, Grid, get_header_size},
     },
     mode::Mode,
     screen::ScreenSpace,
 };
 
+pub enum GridType {
+    Values,
+    Formatting,
+}
+
 pub struct App {
     pub exit: bool,
     pub grid: Grid,
+    pub grid_type: GridType,
     pub mode: Mode,
     pub file: Option<PathBuf>,
     file_modified_date: SystemTime,
@@ -67,31 +74,36 @@ impl Widget for &App {
 
         // cells that are related by reference to the cursor's cell
         // (inputs to formulas and such)
+        // (for highlighting references)
         let cells_of_interest: Vec<(usize, usize)> = {
-            let ctx = crate::app::logic::ctx::ExtractionContext::new();
+            let ctx = ExtractionContext::new();
             let (x, y) = self.grid.cursor();
             if let Some(cell) = self.grid.get_cell_raw(x, y) {
-                if let CellType::Equation(eq) = cell {
-                    let _ = evalexpr::eval_with_context(&eq[1..], &ctx);
-                    let vars = ctx.dump_vars();
+                if let Some(v) = &cell.value {
+                    if let CellType::Equation(eq) = v {
+                        let _ = evalexpr::eval_with_context(&eq[1..], &ctx);
+                        let vars = ctx.dump_vars();
 
-                    let mut interest = Vec::new();
-                    for var in vars {
-                        if let Some(a) = Grid::parse_to_idx(&var) {
-                            interest.push(a);
-                        } else if let Some((start, end)) = Grid::range_as_indices(&var) {
-                            // insert coords:
-                            // (start, 0..len)
-                            // ..
-                            // (end, 0..len)
-                            for x in start..=end {
-                                for y in 0..=super::logic::calc::LEN {
-                                    interest.push((x,y))
+                        let mut interest = Vec::new();
+                        for var in vars {
+                            if let Some(a) = Grid::parse_to_idx(&var) {
+                                interest.push(a);
+                            } else if let Some((start, end)) = Grid::range_as_indices(&var) {
+                                // insert coords:
+                                // (start, 0..len)
+                                // ..
+                                // (end, 0..len)
+                                for x in start..=end {
+                                    for y in 0..=GRID_LEN {
+                                        interest.push((x, y))
+                                    }
                                 }
                             }
                         }
+                        interest
+                    } else {
+                        Vec::new()
                     }
-                    interest
                 } else {
                     Vec::new()
                 }
@@ -125,7 +137,7 @@ impl Widget for &App {
                 }
 
                 // don't render non-accessible cells
-                if x_idx > LEN-1 {
+                if x_idx > GRID_LEN - 1 {
                     continue;
                 }
 
@@ -181,35 +193,45 @@ impl Widget for &App {
                     (false, false) => {
                         match self.grid.get_cell_raw(x_idx, y_idx) {
                             Some(cell) => {
-                                // Render in different colors based on type of contents
-                                match cell {
-                                    CellType::Number(c) => display = c.to_string(),
-                                    CellType::String(s) => {
-                                        display = s.to_owned();
-                                        style = Style::new().fg(Color::LightMagenta)
-                                    }
-                                    CellType::Equation(e) => {
-                                        match self.grid.evaluate(e) {
-                                            Ok(val) => {
-                                                display = val.to_string();
-                                                style = Style::new()
-                                                    .fg(Color::White)
-                                                    // TODO This breaks dumb terminals like the windows
-                                                    // terminal
-                                                    .underline_color(Color::DarkGray)
-                                                    .add_modifier(Modifier::UNDERLINED);
-                                            }
-                                            Err(err) => {
-                                                // the formula is broken
-                                                display = err.to_owned();
-                                                style = Style::new()
-                                                    .fg(Color::Red)
-                                                    .underline_color(Color::Red)
-                                                    .add_modifier(Modifier::UNDERLINED)
+                                match self.grid_type {
+                                    GridType::Values => {
+                                        if let Some(v) = &cell.value {
+                                            match v {
+                                                CellType::Number(c) => display = c.to_string(),
+                                                CellType::String(s) => {
+                                                    display = s.to_owned();
+                                                    style = Style::new().fg(Color::LightMagenta)
+                                                }
+                                                CellType::Equation(e) => {
+                                                    match self.grid.evaluate(&e) {
+                                                        Ok(val) => {
+                                                            display = val.to_string();
+                                                            style = Style::new()
+                                                                .fg(Color::White)
+                                                                // TODO This breaks dumb terminals like the windows
+                                                                // terminal
+                                                                .underline_color(Color::DarkGray)
+                                                                .add_modifier(Modifier::UNDERLINED);
+                                                        }
+                                                        Err(err) => {
+                                                            // the formula is broken
+                                                            display = err.to_owned();
+                                                            style = Style::new()
+                                                                .fg(Color::Red)
+                                                                .underline_color(Color::Red)
+                                                                .add_modifier(Modifier::UNDERLINED)
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
+                                    GridType::Formatting => {
+                                        display = "test".to_string();
+                                    }
                                 }
+
+                                // Render in different colors based on type of contents
 
                                 // ===================================================
                                 // Allow for text in one cell to visually overflow into empty cells
@@ -295,6 +317,7 @@ impl App {
     pub fn new() -> Self {
         Self {
             exit: false,
+            grid_type: GridType::Values,
             grid: Grid::new(),
             mode: Mode::Normal,
             file: None,
@@ -348,10 +371,31 @@ impl App {
         format!("{file_name}{icon}")
     }
 
+    pub fn chars_to_display(&self, cell: &Option<Cell>) -> u16 {
+        let min = 20;
+        match self.grid_type {
+            GridType::Values => {
+                let len = match &self.mode {
+                    Mode::Insert(edit) | Mode::VisualCmd(_, edit) | Mode::Command(edit) | Mode::Chord(edit) => {
+                        edit.len()
+                    }
+                    Mode::Normal => cell.as_ref().map(|f| f.value_string().len()).unwrap_or_default(),
+                    Mode::Visual(_) => 0,
+                };
+                // min 20 chars, expand if needed
+                max(len as u16 + 1, min)
+            }
+            GridType::Formatting => {
+                let x = cell.as_ref().map(|f| f.format_string().len()).unwrap_or_default();
+                max(x as u16 + 1, min)
+            }
+        }
+    }
+
     fn draw(&self, frame: &mut Frame) {
         let (x, y) = self.grid.cursor();
         let current_cell = self.grid.get_cell_raw(x, y);
-        let len = self.mode.chars_to_display(current_cell);
+        let len = self.chars_to_display(current_cell);
         let file_name_status = self.file_name_display();
 
         // layout
@@ -444,16 +488,10 @@ impl App {
 
                         let cursor = self.grid.cursor();
                         self.grid.transact_on_grid(|grid| {
-                            // try to insert as a float
-                            if let Ok(v) = v.parse::<f64>() {
-                                grid.set_cell_raw(cursor, Some(v));
+                            if !v.is_empty() {
+                                grid.merge_in_data(cursor, Some(v.to_owned()), &self.grid_type);
                             } else {
-                                // if you can't, then insert as a string
-                                if !v.is_empty() {
-                                    grid.set_cell_raw(cursor, Some(v.to_owned()));
-                                } else {
-                                    grid.set_cell_raw::<CellType>(cursor, None);
-                                }
+                                grid.merge_in_data::<String>(cursor, None, &self.grid_type);
                             }
                         });
 
@@ -532,7 +570,7 @@ fn test_quit_cmd() {
     let mut app = App::new();
     assert!(!app.exit);
 
-    app.mode = Mode::Command(crate::app::mode::Chord::from(":q".to_string()));
+    app.mode = Mode::Command(crate::app::mode::EditBuffer::from(":q".to_string()));
     Mode::process_cmd(&mut app);
 
     assert!(app.exit);

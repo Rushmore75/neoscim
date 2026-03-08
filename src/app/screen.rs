@@ -2,7 +2,7 @@ use std::{cmp::min, collections::HashMap, sync::RwLock};
 
 use ratatui::prelude;
 
-use crate::app::logic::calc::LEN;
+use crate::app::logic::grid::GRID_LEN;
 
 pub struct ScreenSpace {
     /// This is measured in cells.
@@ -126,8 +126,8 @@ impl ScreenSpace {
         let width = (area.width as usize / self.get_cell_width(vars)) + 1;
         let height = area.height as usize / self.get_cell_height(vars);
 
-        let x_max = min(LEN-1, width);
-        let y_max = min(LEN-1, height);
+        let x_max = min(GRID_LEN-1, width);
+        let y_max = min(GRID_LEN-1, height);
 
         (x_max as u16, y_max as u16)
     }
