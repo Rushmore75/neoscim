@@ -1,3 +1,3 @@
-pub mod calc;
-pub mod ctx;
+pub mod grid;
+pub mod context;
 pub mod cell;
