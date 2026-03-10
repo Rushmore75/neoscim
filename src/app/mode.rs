@@ -11,7 +11,7 @@ use crate::app::{
     app::App,
     error_msg::StatusMessage,
     logic::{
-        cell::Cell,
+        cell::{Cell, FormatRule},
         grid::{GRID_LEN, Grid},
     },
 };
@@ -549,11 +549,12 @@ impl Widget for &EditBuffer {
 pub struct FormatEditor {
     pub cell: Option<Cell>,
     pub index: u16,
+    pub rules: Vec<FormatRule<f64>> // TODO this doesn't need to be hard-coded f64
 }
 
 impl FormatEditor {
     pub fn new(cell: Option<Cell>) -> Self {
-        Self { cell: cell, index: 0 }
+        Self { cell: cell, index: 0, rules: Vec::new(), }
     }
 }
 
@@ -573,22 +574,18 @@ impl Widget for &FormatEditor {
         block.render(area, buf);
         let inner = area.inner(Margin::new(1, 1));
 
-        let options = [">", "<", "="];
-
         let line = Rect::new(inner.x, inner.y, inner.width, 1);
         Paragraph::new(self.cell.as_ref().map(|f| f.value_string()).unwrap_or("Empty".to_string())).render(line, buf);
 
-        options.iter().zip(1..inner.height).for_each(|(label, offset)| {
+
+        let mut arrow = line.offset(Offset { x: -1 , y: self.index as i32 }).clone();
+        arrow.width = 1;
+        Paragraph::new(">").render(arrow, buf);
+
+        let scroll = 0; // For later when we might have longer rules lists
+        self.rules.iter().skip(scroll).zip(1..inner.height).for_each(|(fmt, offset)| {
             let line = line.offset(Offset { x: 0, y: offset as i32 });
-
-            let style = if offset-1 == self.index {
-                Style::new().fg(Color::Black).bg(Color::White)
-            } else {
-                Style::new().fg(Color::White).bg(Color::Black)
-            };
-
-            let p = Paragraph::new(*label).style(style);
-            p.render(line, buf);
+            fmt.render(line, buf);
         });
     }
 }

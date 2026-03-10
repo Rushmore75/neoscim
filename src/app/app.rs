@@ -14,7 +14,7 @@ use crate::app::{
     clipboard::Clipboard,
     error_msg::StatusMessage,
     logic::{
-        cell::{Cell, CellType},
+        cell::{Cell, CellType, FormatRule},
         context::ExtractionContext,
         grid::{GRID_LEN, Grid, GridType, get_header_size},
     },
@@ -522,7 +522,10 @@ impl App {
                     event::KeyCode::Esc => {
                         // just cancel the operation
                         self.mode = Mode::Normal;
-                    }
+                    },
+                    event::KeyCode::Enter => {
+                        fmt.rules.push(FormatRule::EQ(0., Style::new()))
+                    },
                     event::KeyCode::Char(char) => {
                         match char {
                             'j' => {
@@ -531,6 +534,9 @@ impl App {
                             'k' => {
                                 fmt.index = fmt.index.saturating_sub(1)
                             },
+                            'i' | 'a' => {
+                                // fmt.
+                            }
                             _ => {},
                         }
                     }

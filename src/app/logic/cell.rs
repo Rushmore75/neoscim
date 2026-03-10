@@ -1,22 +1,74 @@
 use std::fmt::Display;
 
 use evalexpr::eval_with_context;
-use ratatui::style::Style;
+use ratatui::{
+    layout::{Constraint, Layout},
+    style::Style,
+    widgets::{Paragraph, Widget},
+};
 
 use crate::app::logic::{context::ExtractionContext, grid::Grid};
 
 #[derive(Clone)]
-enum Rule {
-    gt(f64, Style),
-    lt(f64, Style),
-    eq(f64, Style),
-    NoOp,
+pub enum FormatRule<T>
+where
+    T: PartialEq + PartialOrd,
+{
+    GT(T, Style),
+    LT(T, Style),
+    EQ(T, Style),
+}
+
+impl<T> Widget for &FormatRule<T>
+where
+    T: Display + PartialEq + PartialOrd,
+{
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let split = Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([Constraint::Min(3), Constraint::Length(3)])
+            .split(area);
+
+        let lh = split[0];
+        let rh = split[1];
+
+        match self {
+            FormatRule::GT(v, style) => {
+                Paragraph::new(format!("> {v}")).render(lh, buf);
+                Paragraph::new("xyz").style(*style).render(rh, buf);
+            }
+            FormatRule::LT(v, style) => {
+                Paragraph::new(format!("> {v}")).render(lh, buf);
+                Paragraph::new("xyz").style(*style).render(rh, buf);
+            }
+            FormatRule::EQ(v, style) => {
+                Paragraph::new(format!("> {v}")).render(lh, buf);
+                Paragraph::new("xyz").style(*style).render(rh, buf);
+            }
+        };
+    }
+}
+
+impl<T> FormatRule<T>
+where
+    T: PartialEq + PartialOrd,
+{
+    fn does_rule_apply(&self, t: T) -> bool {
+        match self {
+            FormatRule::GT(v, _style) => *v > t,
+            FormatRule::LT(v, _style) => *v < t,
+            FormatRule::EQ(v, _style) => *v == t,
+        }
+    }
 }
 
 #[derive(Clone, Default)]
 pub struct Formatting {
     raw: String,
-    rules: Vec<Rule>,
+    rules: Vec<FormatRule<f64>>,
 }
 
 impl From<String> for Formatting {
