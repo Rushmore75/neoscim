@@ -1,7 +1,7 @@
 use std::{cmp::min, fmt::Display, fs, path::PathBuf, process::Command};
 
 use ratatui::{
-    layout::{self, Margin, Offset, Rect},
+    layout::{self, Constraint, Layout, Margin, Offset, Rect},
     prelude,
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph, Widget},
@@ -292,7 +292,9 @@ impl Mode {
                         match app.grid.get_mode() {
                             super::logic::grid::GridType::Values => app.mode = Mode::Insert(EditBuffer::from(val)),
                             super::logic::grid::GridType::Formatting => {
-                                app.mode = Mode::Formatting(FormatEditor::new(app.grid.get_cell_raw(x, y).clone()))
+                                app.mode = Mode::Formatting(FormatEditor::Viewer(RulesViewer::new(
+                                    app.grid.get_cell_raw(x, y).clone(),
+                                )))
                             }
                         }
                     }
@@ -546,15 +548,31 @@ impl Widget for &EditBuffer {
     }
 }
 
-pub struct FormatEditor {
-    pub cell: Option<Cell>,
-    pub index: u16,
-    pub rules: Vec<FormatRule<f64>> // TODO this doesn't need to be hard-coded f64
+pub enum FormatEditor {
+    Viewer(RulesViewer),
+    Editor(RuleEditor),
 }
 
-impl FormatEditor {
+pub struct RulesViewer {
+    pub cell: Option<Cell>,
+    pub index: u16,
+    pub rules: Vec<FormatRule<f64>>, // TODO this doesn't need to be hard-coded f64
+}
+
+pub struct RuleEditor {
+    pub mode: FormatRule<f64>,
+    pub index: usize,
+}
+
+impl From<FormatRule<f64>> for RuleEditor {
+    fn from(value: FormatRule<f64>) -> Self {
+        Self { mode: value, index: 0 }
+    }
+}
+
+impl RulesViewer {
     pub fn new(cell: Option<Cell>) -> Self {
-        Self { cell: cell, index: 0, rules: Vec::new(), }
+        Self { cell: cell, index: 0, rules: Vec::new() }
     }
 }
 
@@ -574,19 +592,50 @@ impl Widget for &FormatEditor {
         block.render(area, buf);
         let inner = area.inner(Margin::new(1, 1));
 
-        let line = Rect::new(inner.x, inner.y, inner.width, 1);
-        Paragraph::new(self.cell.as_ref().map(|f| f.value_string()).unwrap_or("Empty".to_string())).render(line, buf);
+        match self {
+            FormatEditor::Viewer(rules_viewer) => {
+                let line = Rect::new(inner.x, inner.y, inner.width, 1);
+                Paragraph::new(rules_viewer.cell.as_ref().map(|f| f.value_string()).unwrap_or("Empty".to_string()))
+                    .render(line, buf);
 
+                let mut l_arrow = line.offset(Offset { x: -1, y: rules_viewer.index as i32 + 1 }).clone();
+                l_arrow.width = 1;
+                let r_arrow = l_arrow.offset(Offset { x: area.width as i32 - 1, y: 0 });
+                Paragraph::new("→").render(l_arrow, buf);
+                Paragraph::new("←").render(r_arrow, buf);
 
-        let mut arrow = line.offset(Offset { x: -1 , y: self.index as i32 }).clone();
-        arrow.width = 1;
-        Paragraph::new(">").render(arrow, buf);
+                let scroll = 0; // For later when we might have longer rules lists
+                rules_viewer.rules.iter().skip(scroll).zip(1..inner.height).for_each(|(fmt, offset)| {
+                    let line = line.offset(Offset { x: 0, y: offset as i32 });
+                    fmt.render(line, buf);
+                });
+            }
+            FormatEditor::Editor(rule_editor) => {
+                let layout = Layout::default()
+                    .direction(layout::Direction::Vertical)
+                    .constraints([
+                        Constraint::Min(1),
+                        Constraint::Min(1),
+                        Constraint::Min(1),
+                        Constraint::Min(1),
+                        Constraint::Min(1),
+                    ])
+                    .split(inner);
 
-        let scroll = 0; // For later when we might have longer rules lists
-        self.rules.iter().skip(scroll).zip(1..inner.height).for_each(|(fmt, offset)| {
-            let line = line.offset(Offset { x: 0, y: offset as i32 });
-            fmt.render(line, buf);
-        });
+                let title = layout[0];
+                let comparitor = layout[1];
+                let threashold = layout[2];
+                let fg = layout[3];
+                let bg = layout[4];
+
+                Paragraph::new("If value is").render(title, buf);
+                Paragraph::new(">").render(title, buf);
+                Paragraph::new("0").render(comparitor, buf);
+                Paragraph::new("then color:").render(threashold, buf);
+                Paragraph::new("Red").render(fg, buf);
+                Paragraph::new("Blue").render(bg, buf);
+            }
+        }
     }
 }
 

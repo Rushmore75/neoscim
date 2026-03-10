@@ -7,7 +7,13 @@ use std::{
 };
 
 use ratatui::{
-    DefaultTerminal, Frame, backend::ClearType, crossterm::{event, terminal::Clear}, layout::{self, Constraint, Layout, Margin, Rect}, prelude, style::{Color, Modifier, Style}, widgets::{Block, Borders, Paragraph, Widget}
+    DefaultTerminal, Frame,
+    backend::ClearType,
+    crossterm::{event, terminal::Clear},
+    layout::{self, Constraint, Layout, Margin, Rect},
+    prelude,
+    style::{Color, Modifier, Style},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
 
 use crate::app::{
@@ -18,7 +24,7 @@ use crate::app::{
         context::ExtractionContext,
         grid::{GRID_LEN, Grid, GridType, get_header_size},
     },
-    mode::{FormatEditor, Mode},
+    mode::{FormatEditor, Mode, RuleEditor, RulesViewer},
     screen::ScreenSpace,
 };
 
@@ -386,7 +392,6 @@ impl App {
     }
 
     fn draw(&self, frame: &mut Frame) {
-
         let (x, y) = self.grid.cursor();
         let current_cell_string = self.grid.get_cell_display(x, y);
         let len = max(current_cell_string.len() as u16, 20);
@@ -517,33 +522,55 @@ impl App {
                 },
                 _ => {}
             },
-            Mode::Formatting(fmt) => match event::read()? {
-                event::Event::Key(key_event) => match key_event.code {
-                    event::KeyCode::Esc => {
-                        // just cancel the operation
-                        self.mode = Mode::Normal;
-                    },
-                    event::KeyCode::Enter => {
-                        fmt.rules.push(FormatRule::EQ(0., Style::new()))
-                    },
-                    event::KeyCode::Char(char) => {
-                        match char {
-                            'j' => {
-                                fmt.index += 1
-                            },
-                            'k' => {
-                                fmt.index = fmt.index.saturating_sub(1)
-                            },
-                            'i' | 'a' => {
-                                // fmt.
+            Mode::Formatting(mode) => {
+                match mode {
+                    FormatEditor::Viewer(v) => {
+                        if let event::Event::Key(key) = event::read()? {
+                            match key.code {
+                                event::KeyCode::Esc => {
+                                    // just cancel the operation
+                                    self.mode = Mode::Normal;
+                                }
+                                event::KeyCode::Char(char) => {
+                                    match char {
+                                        // TODO need to do proper array indexing
+                                        'O' => {}
+                                        'o' => v
+                                            .rules
+                                            .push(FormatRule::EQ(0., Style::new().bg(Color::Blue).fg(Color::Magenta))),
+                                        'j' => v.index += 1,
+                                        'k' => v.index = v.index.saturating_sub(1),
+                                        'i' | 'a' => {
+                                            if let Some(r) = v.rules.get(v.index as usize) {
+                                                *mode = FormatEditor::Editor(r.clone().into())
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                _ => {}
                             }
-                            _ => {},
                         }
                     }
-                    _ => {}
-                }
-                _ => {}
-            },
+                    FormatEditor::Editor(editor) => {
+                        if let event::Event::Key(key) = event::read()? {
+                            match key.code {
+                                event::KeyCode::Esc => {
+                                    let (x, y) = self.grid.cursor();
+                                    *mode =
+                                        FormatEditor::Viewer(RulesViewer::new(self.grid.get_cell_raw(x, y).clone()));
+                                }
+                                event::KeyCode::Char(char) => match char {
+                                    'j' => {}
+                                    'k' => {}
+                                    _ => {}
+                                },
+                                _ => {}
+                            }
+                        }
+                    }
+                };
+            }
             Mode::Normal => match event::read()? {
                 event::Event::Key(key_event) => match key_event.code {
                     event::KeyCode::F(_n) => {}

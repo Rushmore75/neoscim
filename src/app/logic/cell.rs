@@ -54,13 +54,21 @@ where
 
 impl<T> FormatRule<T>
 where
-    T: PartialEq + PartialOrd,
+    T: PartialEq + PartialOrd + Clone,
 {
     fn does_rule_apply(&self, t: T) -> bool {
         match self {
             FormatRule::GT(v, _style) => *v > t,
             FormatRule::LT(v, _style) => *v < t,
             FormatRule::EQ(v, _style) => *v == t,
+        }
+    }
+
+    pub fn threashold(&self) -> T {
+        match self {
+            FormatRule::GT(v, _style) => v.clone(),
+            FormatRule::LT(v, _style) => v.clone(),
+            FormatRule::EQ(v, _style) => v.clone(),
         }
     }
 }
