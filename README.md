@@ -49,8 +49,8 @@ But putting it in `/opt/neoscim/` would also be a standard location.
 | - | - |
 | `j` | Move down |
 | `k` | Move up |
-| `h` | Move left |
-| `l` | Move right |
+| `h`/`b` | Move left |
+| `l`/`w` | Move right |
 | `0` | Go to beginning of the row |
 | `g0` | Go to beginning of the visual row |
 | `$` | Go to end of the row |

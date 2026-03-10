@@ -1,22 +1,18 @@
-use std::{
-    cmp::min,
-    fmt::Display,
-    fs,
-    path::PathBuf,
-    process::Command,
-};
+use std::{cmp::min, fmt::Display, fs, path::PathBuf, process::Command};
 
 use ratatui::{
+    layout::{self, Margin, Offset, Rect},
     prelude,
     style::{Color, Style},
-    widgets::{Paragraph, Widget},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
 
 use crate::app::{
-    app::{App, GridType},
+    app::App,
     error_msg::StatusMessage,
     logic::{
-        cell::Cell, grid::{GRID_LEN, Grid}
+        cell::Cell,
+        grid::{GRID_LEN, Grid},
     },
 };
 
@@ -27,6 +23,7 @@ pub enum Mode {
     Command(EditBuffer),
     Visual((usize, usize)),
     VisualCmd((usize, usize), EditBuffer),
+    Formatting(FormatEditor),
 }
 
 impl Display for Mode {
@@ -38,6 +35,7 @@ impl Display for Mode {
             Mode::Command(_) => write!(f, "COMMAND"),
             Mode::Visual(_) => write!(f, "VISUAL"),
             Mode::VisualCmd(_, _) => write!(f, "V-CMD"),
+            Mode::Formatting(_) => write!(f, "FMT"),
         }
     }
 }
@@ -50,6 +48,7 @@ impl Mode {
             Mode::Command(_) => Style::new().fg(Color::Black).bg(Color::Magenta),
             Mode::VisualCmd(_, _) => Style::new().fg(Color::Black).bg(Color::Yellow),
             Mode::Chord(_) => Style::new().fg(Color::Black).bg(Color::LightBlue),
+            Mode::Formatting(_) => Style::new().fg(Color::White).bg(Color::Cyan),
             // Movement-based modes
             Mode::Visual(_) => Style::new().fg(Color::Yellow),
             Mode::Normal => Style::new().fg(Color::Green),
@@ -67,12 +66,8 @@ impl Mode {
             }
 
             match args[0] {
-                "format" => {
-                    app.grid_type = GridType::Formatting
-                },
-                "edit" => {
-                    app.grid_type = GridType::Values
-                },
+                "format" => app.grid.set_mode_formatting(),
+                "edit" => app.grid.set_mode_editing(),
                 "w" => {
                     // first try the passed argument as file
                     if let Some(arg) = args.get(1) {
@@ -193,7 +188,7 @@ impl Mode {
                                     .map(|s| s.replace("yi", &j.to_string()))
                                     .map(|s| s.replace("x", &x.to_string()))
                                     .map(|s| s.replace("y", &y.to_string()));
-                                grid.merge_in_data((x, y), arg, &app.grid_type);
+                                grid.merge_in_data((x, y), arg);
                             }
                         }
                     });
@@ -242,12 +237,13 @@ impl Mode {
         }
     }
 
+    // Why is this function not just inside app.rs's handle_events()?
     pub fn process_key(app: &mut App, key: char) {
         match &mut app.mode {
             Mode::Normal | Mode::Visual(_) => {
                 match key {
                     // <
-                    'h' => {
+                    'h' | 'b' => {
                         let (x, y) = app.grid.cursor();
                         app.grid.mv_cursor_to(x.saturating_sub(1), y);
                         return;
@@ -255,7 +251,7 @@ impl Mode {
                     // v
                     'j' => {
                         let (x, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(x, min(y.saturating_add(1), GRID_LEN- 1));
+                        app.grid.mv_cursor_to(x, min(y.saturating_add(1), GRID_LEN - 1));
                         return;
                     }
                     // ^
@@ -265,9 +261,9 @@ impl Mode {
                         return;
                     }
                     // >
-                    'l' => {
+                    'l' | 'w' => {
                         let (x, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(min(x.saturating_add(1), GRID_LEN- 1), y);
+                        app.grid.mv_cursor_to(min(x.saturating_add(1), GRID_LEN - 1), y);
                         return;
                     }
                     '0' => {
@@ -278,27 +274,27 @@ impl Mode {
                     // Go to end of row
                     '$' => {
                         let (_, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(GRID_LEN-1, y);
+                        app.grid.mv_cursor_to(GRID_LEN - 1, y);
                         return;
                     }
                     // Go to bottom of column
                     'G' => {
                         let (x, _) = app.grid.cursor();
-                        app.grid.mv_cursor_to(x, GRID_LEN-1);
+                        app.grid.mv_cursor_to(x, GRID_LEN - 1);
                         return;
                     }
                     // edit cell
                     'i' | 'a' => {
                         let (x, y) = app.grid.cursor();
 
-                        let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| {
-                            match app.grid_type {
-                                GridType::Values => f.value_string(),
-                                GridType::Formatting => f.format_string(),
-                            }
-                        }).unwrap_or_default();
+                        let val = app.grid.get_cell_display(x, y);
 
-                        app.mode = Mode::Insert(EditBuffer::from(val));
+                        match app.grid.get_mode() {
+                            super::logic::grid::GridType::Values => app.mode = Mode::Insert(EditBuffer::from(val)),
+                            super::logic::grid::GridType::Formatting => {
+                                app.mode = Mode::Formatting(FormatEditor::new(app.grid.get_cell_raw(x, y).clone()))
+                            }
+                        }
                     }
                     // replace cell
                     'r' => {
@@ -477,13 +473,14 @@ impl Mode {
                 }
             }
             // Keys are process in the handle_event method in App for these
+            Mode::Formatting(_cell) => {}
             Mode::Insert(_chord) => {}
             Mode::Command(_chord) => {}
             Mode::VisualCmd(_pos, _chord) => {}
         }
     }
 
-    pub fn render(&self, f: &mut ratatui::Frame, area: prelude::Rect, cell: &Option<Cell>) {
+    pub fn render(&self, f: &mut ratatui::Frame, area: prelude::Rect, cell: String) {
         match &self {
             Mode::Insert(editor) => {
                 f.render_widget(editor, area);
@@ -492,14 +489,19 @@ impl Mode {
                 f.render_widget(editor, area);
             }
             Mode::Chord(chord) => f.render_widget(chord, area),
-            Mode::Normal => f.render_widget(
-                Paragraph::new({
-                    cell.as_ref().map(|f| f.value_string()).unwrap_or_default()
-                }),
-                area,
-            ),
+            Mode::Normal => f.render_widget(Paragraph::new(cell), area),
             Mode::Visual(_) => {}
             Mode::VisualCmd(_, editor) => f.render_widget(editor, area),
+            Mode::Formatting(fmt) => {
+                // this draws over other objects :)
+                let a = f.area();
+                let width = min(25, a.width); // don't draw oob
+                let height = min(20, a.height);
+                let xpos = (a.width / 2).saturating_sub(width / 2); // centered
+                let ypos = (a.height / 2).saturating_sub(height / 2);
+                let area = Rect::new(xpos, ypos, width, height);
+                f.render_widget(fmt, area);
+            }
         }
     }
 }
@@ -541,6 +543,53 @@ impl EditBuffer {
 impl Widget for &EditBuffer {
     fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
         Paragraph::new(self.buf.iter().collect::<String>()).render(area, buf);
+    }
+}
+
+pub struct FormatEditor {
+    pub cell: Option<Cell>,
+    pub index: u16,
+}
+
+impl FormatEditor {
+    pub fn new(cell: Option<Cell>) -> Self {
+        Self { cell: cell, index: 0 }
+    }
+}
+
+impl Widget for &FormatEditor {
+    fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let block = Block::default()
+            .title("Formatter")
+            .title_alignment(layout::Alignment::Center)
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .borders(Borders::all())
+            .style(Style::default().fg(Color::White));
+
+        ratatui::widgets::Clear.render(area, buf);
+        block.render(area, buf);
+        let inner = area.inner(Margin::new(1, 1));
+
+        let options = [">", "<", "="];
+
+        let line = Rect::new(inner.x, inner.y, inner.width, 1);
+        Paragraph::new(self.cell.as_ref().map(|f| f.value_string()).unwrap_or("Empty".to_string())).render(line, buf);
+
+        options.iter().zip(1..inner.height).for_each(|(label, offset)| {
+            let line = line.offset(Offset { x: 0, y: offset as i32 });
+
+            let style = if offset-1 == self.index {
+                Style::new().fg(Color::Black).bg(Color::White)
+            } else {
+                Style::new().fg(Color::White).bg(Color::Black)
+            };
+
+            let p = Paragraph::new(*label).style(style);
+            p.render(line, buf);
+        });
     }
 }
 

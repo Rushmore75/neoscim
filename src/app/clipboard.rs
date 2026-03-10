@@ -54,6 +54,7 @@ impl Clipboard {
                     if translate {
                         if let Some(cell) = cell {
                             let trans = cell.translate_cell(self.source_cell, cursor);
+                            // FIXME need to merge in data
                             grid.set_cell_raw(idx, Some(trans));
                         } else {
                             // The cell at this location doesn't exist (empty)
@@ -115,7 +116,7 @@ impl Clipboard {
                 for y in low_y..=hi_y {
                     let a = grid.get_cell_raw(x, y);
                     col.push(a.clone());
-                    grid.set_cell_raw::<Cell>((x, y), None);
+                    grid.merge_in_data::<String>((x,y), None);
                 }
                 self.clipboard.push(col);
             }

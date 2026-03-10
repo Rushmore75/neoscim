@@ -7,12 +7,7 @@ use std::{
 };
 
 use ratatui::{
-    DefaultTerminal, Frame,
-    crossterm::event,
-    layout::{self, Constraint, Layout, Rect},
-    prelude,
-    style::{Color, Modifier, Style},
-    widgets::{Paragraph, Widget},
+    DefaultTerminal, Frame, backend::ClearType, crossterm::{event, terminal::Clear}, layout::{self, Constraint, Layout, Margin, Rect}, prelude, style::{Color, Modifier, Style}, widgets::{Block, Borders, Paragraph, Widget}
 };
 
 use crate::app::{
@@ -21,21 +16,15 @@ use crate::app::{
     logic::{
         cell::{Cell, CellType},
         context::ExtractionContext,
-        grid::{GRID_LEN, Grid, get_header_size},
+        grid::{GRID_LEN, Grid, GridType, get_header_size},
     },
-    mode::Mode,
+    mode::{FormatEditor, Mode},
     screen::ScreenSpace,
 };
-
-pub enum GridType {
-    Values,
-    Formatting,
-}
 
 pub struct App {
     pub exit: bool,
     pub grid: Grid,
-    pub grid_type: GridType,
     pub mode: Mode,
     pub file: Option<PathBuf>,
     file_modified_date: SystemTime,
@@ -193,7 +182,7 @@ impl Widget for &App {
                     (false, false) => {
                         match self.grid.get_cell_raw(x_idx, y_idx) {
                             Some(cell) => {
-                                match self.grid_type {
+                                match self.grid.get_mode() {
                                     GridType::Values => {
                                         if let Some(v) = &cell.value {
                                             match v {
@@ -227,7 +216,12 @@ impl Widget for &App {
                                         }
                                     }
                                     GridType::Formatting => {
-                                        display = "test".to_string();
+                                        if let None = cell.formatting {
+                                            display = cell.value_string();
+                                            style = Style::new().bg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+                                        } else {
+                                            display = cell.format_string();
+                                        }
                                     }
                                 }
 
@@ -317,7 +311,6 @@ impl App {
     pub fn new() -> Self {
         Self {
             exit: false,
-            grid_type: GridType::Values,
             grid: Grid::new(),
             mode: Mode::Normal,
             file: None,
@@ -373,14 +366,14 @@ impl App {
 
     pub fn chars_to_display(&self, cell: &Option<Cell>) -> u16 {
         let min = 20;
-        match self.grid_type {
+        match self.grid.get_mode() {
             GridType::Values => {
                 let len = match &self.mode {
                     Mode::Insert(edit) | Mode::VisualCmd(_, edit) | Mode::Command(edit) | Mode::Chord(edit) => {
                         edit.len()
                     }
                     Mode::Normal => cell.as_ref().map(|f| f.value_string().len()).unwrap_or_default(),
-                    Mode::Visual(_) => 0,
+                    Mode::Visual(_) | Mode::Formatting(_) => 0,
                 };
                 // min 20 chars, expand if needed
                 max(len as u16 + 1, min)
@@ -393,9 +386,11 @@ impl App {
     }
 
     fn draw(&self, frame: &mut Frame) {
+
         let (x, y) = self.grid.cursor();
-        let current_cell = self.grid.get_cell_raw(x, y);
-        let len = self.chars_to_display(current_cell);
+        let current_cell_string = self.grid.get_cell_display(x, y);
+        let len = max(current_cell_string.len() as u16, 20);
+
         let file_name_status = self.file_name_display();
 
         // layout
@@ -425,8 +420,6 @@ impl App {
         let cmd_line_debug = cmd_line_split[3];
         // ======================================================
 
-        self.mode.render(frame, cmd_line_left, current_cell);
-
         frame.render_widget(self, body);
         frame.render_widget(&self.msg, cmd_line_right);
         frame.render_widget(Paragraph::new(file_name_status), cmd_line_status);
@@ -445,6 +438,23 @@ impl App {
             )),
             cmd_line_debug,
         );
+
+        self.mode.render(frame, cmd_line_left, current_cell_string.clone());
+        /*
+        if let GridType::Formatting = self.grid.get_mode() {
+            let a = frame.area();
+            let width = min(25, a.width); // don't draw oob
+            let height = min(20, a.height);
+            let xpos = (a.width / 2).saturating_sub(width/ 2); // centered
+            let ypos = (a.height / 2).saturating_sub(height / 2);
+            let area = Rect::new(xpos, ypos, width, height);
+
+            let fe = FormatEditor {
+                cell: self.grid.get_cell_raw(x, y).clone(),
+            };
+            frame.render_widget(fe, area);
+        }
+        */
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -489,9 +499,9 @@ impl App {
                         let cursor = self.grid.cursor();
                         self.grid.transact_on_grid(|grid| {
                             if !v.is_empty() {
-                                grid.merge_in_data(cursor, Some(v.to_owned()), &self.grid_type);
+                                grid.merge_in_data(cursor, Some(v.to_owned()));
                             } else {
-                                grid.merge_in_data::<String>(cursor, None, &self.grid_type);
+                                grid.merge_in_data::<String>(cursor, None);
                             }
                         });
 
@@ -505,6 +515,27 @@ impl App {
                     }
                     _ => {}
                 },
+                _ => {}
+            },
+            Mode::Formatting(fmt) => match event::read()? {
+                event::Event::Key(key_event) => match key_event.code {
+                    event::KeyCode::Esc => {
+                        // just cancel the operation
+                        self.mode = Mode::Normal;
+                    }
+                    event::KeyCode::Char(char) => {
+                        match char {
+                            'j' => {
+                                fmt.index += 1
+                            },
+                            'k' => {
+                                fmt.index = fmt.index.saturating_sub(1)
+                            },
+                            _ => {},
+                        }
+                    }
+                    _ => {}
+                }
                 _ => {}
             },
             Mode::Normal => match event::read()? {

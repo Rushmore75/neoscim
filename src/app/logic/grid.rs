@@ -7,11 +7,11 @@ use std::{
 
 use evalexpr::*;
 
-use crate::app::{app::GridType, logic::{
+use crate::app::logic::{
     cell::{CSV_DELIMITER, Cell, CellType},
     context::CallbackContext,
     grid::internal::CellGrid,
-}};
+};
 
 #[cfg(test)]
 use crate::app::app::App;
@@ -27,14 +27,10 @@ pub const GRID_LEN: usize = 1001;
 pub const CSV_EXT: &str = "csv";
 pub const CUSTOM_EXT: &str = "nscim";
 
+static mut GRID_TYPE: GridType = GridType::Values;
+
 mod internal {
-    use crate::app::{
-        app::GridType,
-        logic::{
-            cell::Cell,
-            grid::GRID_LEN,
-        },
-    };
+    use crate::app::logic::{cell::Cell, grid::GRID_LEN};
 
     #[derive(Clone)]
     pub struct CellGrid {
@@ -90,24 +86,26 @@ mod internal {
             }
         }
 
-        pub fn merge_in_data<T: Into<String>>(&mut self, (x, y): (usize, usize), val: Option<T>, gt: &GridType) {
-            if let Some(input) = val {
-                let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
-                    match gt {
-                        // setting the editing (value) part of the cell
-                        GridType::Values => Cell { value: Some(input.into().into()), formatting: prev_cell.formatting.clone() },
-                        // setting the formatting part of the cell
-                        GridType::Formatting => Cell { value: prev_cell.value.clone(), formatting: Some(input.into().into()) },
+        pub fn merge_in_data<T: Into<String>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
+            let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
+                match unsafe { super::GRID_TYPE } {
+                    // setting the editing (value) part of the cell
+                    super::GridType::Values => {
+                        Cell { value: val.map(|f| f.into().into()), formatting: prev_cell.formatting.clone() }
                     }
-                } else {
-                    match gt {
-                        GridType::Values => Cell { value: Some(input.into().into()), formatting: None },
-                        GridType::Formatting => Cell { value: None, formatting: Some(input.into().into()) },
+                    // setting the formatting part of the cell
+                    super::GridType::Formatting => {
+                        Cell { value: prev_cell.value.clone(), formatting: val.map(|f| f.into().into()) }
                     }
-                };
-                // TODO check oob
-                self.cells[x][y] = Some(cell)
-            }
+                }
+            } else {
+                match unsafe { super::GRID_TYPE } {
+                    super::GridType::Values => Cell { value: val.map(|f| f.into().into()), formatting: None },
+                    super::GridType::Formatting => Cell { value: None, formatting: val.map(|f| f.into().into()) },
+                }
+            };
+            // TODO check oob
+            self.cells[x][y] = Some(cell)
         }
         /// Iterate over the entire grid and see where
         /// the farthest modified cell is.
@@ -153,6 +151,12 @@ mod internal {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum GridType {
+    Values,
+    Formatting,
+}
+
 pub struct Grid {
     /// Which grid in history are we currently on
     current_grid: usize,
@@ -177,6 +181,17 @@ impl Grid {
         Self { current_grid: 0, grid_history: vec![x], selected_cell: (0, 0), dirty: false }
     }
 
+    pub fn get_mode(&self) -> GridType {
+        unsafe { GRID_TYPE }
+    }
+
+    pub fn set_mode_formatting(&mut self) {
+        unsafe { GRID_TYPE = GridType::Formatting }
+    }
+    pub fn set_mode_editing(&mut self) {
+        unsafe { GRID_TYPE = GridType::Values }
+    }
+
     pub fn new_from_file(file: &mut File) -> std::io::Result<Self> {
         let mut grid = Self::new();
 
@@ -189,7 +204,7 @@ impl Grid {
 
                 for (xi, cell) in cells.into_iter().enumerate() {
                     // This gets automatically duck-typed
-                    grid.merge_in_data((xi, yi), cell, &GridType::Values);
+                    grid.merge_in_data((xi, yi), cell);
                 }
             }
         });
@@ -592,6 +607,16 @@ impl Grid {
             return &None;
         }
         self.get_grid().get_cell_raw(x, y)
+    }
+
+    pub fn get_cell_display(&self, x: usize, y: usize) -> String {
+        self.get_cell_raw(x, y)
+            .as_ref()
+            .map(|cell| match self.get_mode() {
+                GridType::Values => cell.value_string(),
+                GridType::Formatting => cell.format_string(),
+            })
+            .unwrap_or_default()
     }
 
     pub fn num_to_char(idx: usize) -> String {

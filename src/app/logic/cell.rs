@@ -1,17 +1,27 @@
 use std::fmt::Display;
 
 use evalexpr::eval_with_context;
+use ratatui::style::Style;
 
 use crate::app::logic::{context::ExtractionContext, grid::Grid};
 
 #[derive(Clone)]
+enum Rule {
+    gt(f64, Style),
+    lt(f64, Style),
+    eq(f64, Style),
+    NoOp,
+}
+
+#[derive(Clone, Default)]
 pub struct Formatting {
     raw: String,
+    rules: Vec<Rule>,
 }
 
 impl From<String> for Formatting {
     fn from(value: String) -> Self {
-        Self { raw: value }
+        Self { raw: value, ..Default::default() }
     }
 }
 
@@ -35,7 +45,7 @@ impl Default for Cell {
 
 impl Cell {
     pub fn format_string(&self) -> String {
-        if let Some(v) = &self.value {
+        if let Some(v) = &self.formatting {
             return v.to_string();
         }
         String::new()
