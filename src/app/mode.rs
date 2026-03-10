@@ -157,7 +157,7 @@ impl Mode {
                 g.transact_on_grid(|grid| {
                     for (i, x) in (low_x..=hi_x).enumerate() {
                         for (j, y) in (low_y..=hi_y).enumerate() {
-                            grid.set_cell_raw((i, j), grid.get_cell_raw(x, y).clone());
+                            grid.set_cell_raw((i, j), app.grid.get_cell_raw(x, y).clone());
                         }
                     }
                 });
