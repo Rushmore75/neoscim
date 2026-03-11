@@ -116,7 +116,7 @@ impl Clipboard {
                 for y in low_y..=hi_y {
                     let a = grid.get_cell_raw(x, y);
                     col.push(a.clone());
-                    grid.merge_in_data::<String>((x,y), None);
+                    grid.merge_in_value::<String>((x,y), None);
                 }
                 self.clipboard.push(col);
             }

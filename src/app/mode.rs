@@ -11,10 +11,29 @@ use crate::app::{
     app::App,
     error_msg::StatusMessage,
     logic::{
-        cell::{Cell, FormatRule},
+        cell::{Cell, FormatRule, Formatting},
         grid::{GRID_LEN, Grid},
     },
 };
+
+pub const ALL_COLORS: [Color; 16] = [
+    Color::Black,
+    Color::Red,
+    Color::Green,
+    Color::Yellow,
+    Color::Blue,
+    Color::Magenta,
+    Color::Cyan,
+    Color::Gray,
+    Color::DarkGray,
+    Color::LightRed,
+    Color::LightGreen,
+    Color::LightYellow,
+    Color::LightBlue,
+    Color::LightMagenta,
+    Color::LightCyan,
+    Color::White,
+];
 
 pub enum Mode {
     Insert(EditBuffer),
@@ -188,7 +207,7 @@ impl Mode {
                                     .map(|s| s.replace("yi", &j.to_string()))
                                     .map(|s| s.replace("x", &x.to_string()))
                                     .map(|s| s.replace("y", &y.to_string()));
-                                grid.merge_in_data((x, y), arg);
+                                grid.merge_in_value((x, y), arg);
                             }
                         }
                     });
@@ -292,9 +311,10 @@ impl Mode {
                         match app.grid.get_mode() {
                             super::logic::grid::GridType::Values => app.mode = Mode::Insert(EditBuffer::from(val)),
                             super::logic::grid::GridType::Formatting => {
-                                app.mode = Mode::Formatting(FormatEditor::Viewer(RulesViewer::new(
-                                    app.grid.get_cell_raw(x, y).clone(),
-                                )))
+                                let (x, y) = app.grid.cursor();
+                                let cell = app.grid.get_cell_raw(x, y);
+                                let cell = if let Some(cell) = cell { cell.to_owned() } else { Cell::default() };
+                                app.mode = Mode::Formatting(FormatEditor::new(cell));
                             }
                         }
                     }
@@ -548,31 +568,49 @@ impl Widget for &EditBuffer {
     }
 }
 
-pub enum FormatEditor {
+pub struct FormatEditor {
+    pub mode: FormatEditorMode,
+    pub cell: Cell,
+}
+
+impl FormatEditor {
+    fn new(cell: Cell) -> Self {
+        Self { mode: FormatEditorMode::Viewer(RulesViewer::default()), cell }
+    }
+}
+
+pub enum FormatEditorMode {
     Viewer(RulesViewer),
     Editor(RuleEditor),
 }
 
 pub struct RulesViewer {
-    pub cell: Option<Cell>,
     pub index: u16,
-    pub rules: Vec<FormatRule<f64>>, // TODO this doesn't need to be hard-coded f64
 }
 
-pub struct RuleEditor {
-    pub mode: FormatRule<f64>,
-    pub index: usize,
-}
-
-impl From<FormatRule<f64>> for RuleEditor {
-    fn from(value: FormatRule<f64>) -> Self {
-        Self { mode: value, index: 0 }
+impl Default for RulesViewer {
+    fn default() -> Self {
+        Self { index: 0 }
     }
 }
 
-impl RulesViewer {
-    pub fn new(cell: Option<Cell>) -> Self {
-        Self { cell: cell, index: 0, rules: Vec::new() }
+pub enum EditingState {
+    Selecting(usize),
+    Value(usize),
+    Sign(usize),
+    FG(usize),
+    BG(usize),
+}
+
+pub struct RuleEditor {
+    pub editing: EditingState,
+    pub rule: FormatRule<f64>,
+    pub cell_rule_index: usize,
+}
+
+impl RuleEditor {
+    pub fn new(rule: FormatRule<f64>, idx: usize) -> Self {
+        Self { editing: EditingState::Selecting(0), rule, cell_rule_index: idx }
     }
 }
 
@@ -581,59 +619,197 @@ impl Widget for &FormatEditor {
     where
         Self: Sized,
     {
+        let secondary = Style::new().fg(Color::DarkGray).bg(Color::Black);
+        let primary = Style::new().fg(Color::White).bg(Color::Black);
+        let primary_inverse = Style::default().fg(Color::Black).bg(Color::White);
+
         let block = Block::default()
             .title("Formatter")
+            .title_style(primary)
             .title_alignment(layout::Alignment::Center)
             .border_type(ratatui::widgets::BorderType::Rounded)
             .borders(Borders::all())
-            .style(Style::default().fg(Color::White));
+            .style(secondary);
 
         ratatui::widgets::Clear.render(area, buf);
-        block.render(area, buf);
         let inner = area.inner(Margin::new(1, 1));
+        block.render(area, buf);
 
-        match self {
-            FormatEditor::Viewer(rules_viewer) => {
+        match &self.mode {
+            FormatEditorMode::Viewer(rules_viewer) => {
                 let line = Rect::new(inner.x, inner.y, inner.width, 1);
-                Paragraph::new(rules_viewer.cell.as_ref().map(|f| f.value_string()).unwrap_or("Empty".to_string()))
-                    .render(line, buf);
+                let display = self.cell.value_string();
+                let display = if display.is_empty() { "Empty".to_string() } else { display };
+                Paragraph::new(display).style(primary).render(line, buf);
 
                 let mut l_arrow = line.offset(Offset { x: -1, y: rules_viewer.index as i32 + 1 }).clone();
                 l_arrow.width = 1;
                 let r_arrow = l_arrow.offset(Offset { x: area.width as i32 - 1, y: 0 });
-                Paragraph::new("→").render(l_arrow, buf);
-                Paragraph::new("←").render(r_arrow, buf);
+                Paragraph::new("→").style(primary).render(l_arrow, buf);
+                Paragraph::new("←").style(primary).render(r_arrow, buf);
 
                 let scroll = 0; // For later when we might have longer rules lists
-                rules_viewer.rules.iter().skip(scroll).zip(1..inner.height).for_each(|(fmt, offset)| {
-                    let line = line.offset(Offset { x: 0, y: offset as i32 });
-                    fmt.render(line, buf);
-                });
+
+                if let Some(f) = &self.cell.formatting {
+                    f.rules.iter().skip(scroll).zip(1..inner.height).for_each(|(fmt, offset)| {
+                        let line = line.offset(Offset { x: 0, y: offset as i32 });
+                        fmt.render(line, buf);
+                    });
+                }
             }
-            FormatEditor::Editor(rule_editor) => {
-                let layout = Layout::default()
-                    .direction(layout::Direction::Vertical)
-                    .constraints([
-                        Constraint::Min(1),
-                        Constraint::Min(1),
-                        Constraint::Min(1),
-                        Constraint::Min(1),
-                        Constraint::Min(1),
-                    ])
-                    .split(inner);
+            FormatEditorMode::Editor(rule_editor) => {
+                match rule_editor.editing {
+                    EditingState::Selecting(index) => {
+                        let mut sign_color = primary;
+                        let mut value_color = primary;
+                        let mut fg_color = primary;
+                        let mut bg_color = primary;
+                        let mut yes_color = primary;
+                        let mut no_color = primary;
 
-                let title = layout[0];
-                let comparitor = layout[1];
-                let threashold = layout[2];
-                let fg = layout[3];
-                let bg = layout[4];
+                        let layout = Layout::default()
+                            .direction(layout::Direction::Vertical)
+                            .constraints([
+                                // title
+                                Constraint::Max(1),
+                                // comparitor
+                                Constraint::Max(1),
+                                // then color:
+                                Constraint::Max(1),
+                                // colors
+                                Constraint::Max(1),
+                                Constraint::Max(1),
+                                // Ok / Cancel
+                                Constraint::Max(1),
+                            ])
+                            .split(inner);
 
-                Paragraph::new("If value is").render(title, buf);
-                Paragraph::new(">").render(title, buf);
-                Paragraph::new("0").render(comparitor, buf);
-                Paragraph::new("then color:").render(threashold, buf);
-                Paragraph::new("Red").render(fg, buf);
-                Paragraph::new("Blue").render(bg, buf);
+                        let title = layout[0];
+                        let comparitor = layout[1];
+                        let then = layout[2];
+                        let fg = layout[3];
+                        let bg= layout[4];
+                        let submit= layout[5];
+
+                        match index {
+                            0 => {
+                                sign_color = primary_inverse;
+                            }
+                            1 => {
+                                value_color = primary_inverse;
+                            }
+                            2 => {
+                                fg_color = primary_inverse;
+                            }
+                            3 => {
+                                bg_color = primary_inverse;
+                            }
+                            4 => {
+                                yes_color = primary_inverse
+                            }
+                            5 => {
+                                no_color = primary_inverse
+                            }
+                            _ => {}
+                        }
+
+                        Paragraph::new("If value is:").style(secondary).render(title, buf);
+                        let comp = Layout::default()
+                            .direction(layout::Direction::Horizontal)
+                            .constraints([Constraint::Ratio(1, 2); 2])
+                            .split(comparitor);
+                        Paragraph::new(rule_editor.rule.sign_char().to_string())
+                            .centered()
+                            .style(sign_color)
+                            .render(comp[0], buf);
+                        Paragraph::new(rule_editor.rule.get_threashold().to_string())
+                            .centered()
+                            .style(value_color)
+                            .render(comp[1], buf);
+                        Paragraph::new("then color:").style(secondary).render(then, buf);
+                        let fg = Layout::default()
+                            .direction(layout::Direction::Horizontal)
+                            .constraints([
+                                Constraint::Max(3),
+                                Constraint::Fill(1),
+                            ])
+                            .split(fg);
+                        Paragraph::new("FG").style(secondary).render(fg[0], buf);
+                        Paragraph::new(rule_editor.rule.style_string().0).style(fg_color).render(fg[1], buf);
+                        let bg = Layout::default()
+                            .direction(layout::Direction::Horizontal)
+                            .constraints([
+                                Constraint::Max(3),
+                                Constraint::Fill(1),
+                            ])
+                            .split(bg);
+                        Paragraph::new("BG").style(secondary).render(bg[0], buf);
+                        Paragraph::new(rule_editor.rule.style_string().1).style(bg_color).render(bg[1], buf);
+                        let sub = Layout::default()
+                            .direction(layout::Direction::Horizontal)
+                            .constraints([
+                                Constraint::Fill(1),
+                                Constraint::Fill(1),
+                                Constraint::Fill(1),
+                            ])
+                            .split(submit);
+                        Paragraph::new("Submit?").style(secondary).render(sub[0], buf);
+                        Paragraph::new("Yes").style(yes_color).render(sub[1], buf);
+                        Paragraph::new("No").style(no_color).render(sub[2], buf);
+                    }
+                    EditingState::Value(index) => {
+                        inner;
+                    }
+                    EditingState::Sign(index) => {
+                        let mut eq_color = primary;
+                        let mut gt_color = primary;
+                        let mut lt_color = primary;
+
+                        let layout = Layout::default()
+                            .direction(layout::Direction::Vertical)
+                            .constraints([
+                                // title
+                                Constraint::Max(1),
+                                // comparitor
+                                Constraint::Max(1),
+                                // then color:
+                                Constraint::Max(1),
+                                // colors
+                                Constraint::Max(1),
+                            ])
+                            .split(inner);
+                        let sign = layout[0];
+                        let eq = layout[1];
+                        let gt = layout[2];
+                        let lt = layout[3];
+
+                        match index {
+                            0 => {
+                                eq_color = primary_inverse;
+                            }
+                            1 => {
+                                gt_color = primary_inverse;
+                            }
+                            2 => {
+                                lt_color = primary_inverse;
+                            }
+                            _ => {}
+                        }
+
+                        Paragraph::new("Operator").style(secondary).render(sign, buf);
+                        Paragraph::new("Equals (=)").style(eq_color).render(eq, buf);
+                        Paragraph::new("Greater than (>)").style(gt_color).render(gt, buf);
+                        Paragraph::new("Less than (<)").style(lt_color).render(lt, buf);
+                    }
+                    EditingState::BG(index) | EditingState::FG(index) => {
+                        let mut area = Rect::new(inner.x, inner.y, inner.width, 1);
+                        for (i, c) in ALL_COLORS.iter().enumerate() {
+                            let style = if i == index { primary_inverse } else { primary };
+                            Paragraph::new(format!("{}", c.to_string())).style(style).render(area, buf);
+                            area = area.offset(Offset { x: 0, y: 1 });
+                        }
+                    }
+                }
             }
         }
     }

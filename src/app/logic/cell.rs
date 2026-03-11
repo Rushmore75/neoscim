@@ -35,17 +35,19 @@ where
         let lh = split[0];
         let rh = split[1];
 
+        let white = Style::default().fg(ratatui::style::Color::White).bg(ratatui::style::Color::Black);
+
         match self {
             FormatRule::GT(v, style) => {
-                Paragraph::new(format!("> {v}")).render(lh, buf);
+                Paragraph::new(format!("> {v}")).style(white).render(lh, buf);
                 Paragraph::new("xyz").style(*style).render(rh, buf);
             }
             FormatRule::LT(v, style) => {
-                Paragraph::new(format!("> {v}")).render(lh, buf);
+                Paragraph::new(format!("< {v}")).style(white).render(lh, buf);
                 Paragraph::new("xyz").style(*style).render(rh, buf);
             }
             FormatRule::EQ(v, style) => {
-                Paragraph::new(format!("> {v}")).render(lh, buf);
+                Paragraph::new(format!("= {v}")).style(white).render(lh, buf);
                 Paragraph::new("xyz").style(*style).render(rh, buf);
             }
         };
@@ -64,30 +66,52 @@ where
         }
     }
 
-    pub fn threashold(&self) -> T {
+    pub fn get_threashold(&self) -> T {
         match self {
             FormatRule::GT(v, _style) => v.clone(),
             FormatRule::LT(v, _style) => v.clone(),
             FormatRule::EQ(v, _style) => v.clone(),
         }
     }
+    pub fn get_style_mut(&mut self) -> &mut Style {
+        match self {
+            FormatRule::GT(_, style) => style,
+            FormatRule::LT(_, style) => style,
+            FormatRule::EQ(_, style) => style,
+        }
+    }
+
+    pub fn get_style(&self) -> Style {
+        match self {
+            FormatRule::GT(_, style) => style.clone(),
+            FormatRule::LT(_, style) => style.clone(),
+            FormatRule::EQ(_, style) => style.clone(),
+        }
+    }
+    pub fn style_string(&self) -> (String, String) {
+        let s = self.get_style();
+        let fg = if let Some(f) = s.fg { f.to_string() } else { "None".to_string() };
+        let bg = if let Some(b) = s.bg { b.to_string() } else { "None".to_string() };
+        (fg, bg)
+    }
+    pub fn sign_char(&self) -> char {
+        match self {
+            FormatRule::GT(_, _) => '>',
+            FormatRule::LT(_, _) => '<',
+            FormatRule::EQ(_, _) => '=',
+        }
+    }
 }
 
 #[derive(Clone, Default)]
 pub struct Formatting {
-    raw: String,
-    rules: Vec<FormatRule<f64>>,
-}
-
-impl From<String> for Formatting {
-    fn from(value: String) -> Self {
-        Self { raw: value, ..Default::default() }
-    }
+    pub rules: Vec<FormatRule<f64>>,
 }
 
 impl Display for Formatting {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.raw)
+        let len = self.rules.len();
+        if len == 1 { write!(f, "{len} rule") } else { write!(f, "{len} rules") }
     }
 }
 

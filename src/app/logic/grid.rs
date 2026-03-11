@@ -30,7 +30,10 @@ pub const CUSTOM_EXT: &str = "nscim";
 static mut GRID_TYPE: GridType = GridType::Values;
 
 mod internal {
-    use crate::app::logic::{cell::Cell, grid::GRID_LEN};
+    use crate::app::logic::{
+        cell::{Cell, Formatting},
+        grid::GRID_LEN,
+    };
 
     #[derive(Clone)]
     pub struct CellGrid {
@@ -86,23 +89,20 @@ mod internal {
             }
         }
 
-        pub fn merge_in_data<T: Into<String>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
+        pub fn merge_in_formatting(&mut self, (x, y): (usize, usize), val: Formatting) {
             let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
-                match unsafe { super::GRID_TYPE } {
-                    // setting the editing (value) part of the cell
-                    super::GridType::Values => {
-                        Cell { value: val.map(|f| f.into().into()), formatting: prev_cell.formatting.clone() }
-                    }
-                    // setting the formatting part of the cell
-                    super::GridType::Formatting => {
-                        Cell { value: prev_cell.value.clone(), formatting: val.map(|f| f.into().into()) }
-                    }
-                }
+                Cell { value: prev_cell.value.clone(), formatting: Some(val) }
             } else {
-                match unsafe { super::GRID_TYPE } {
-                    super::GridType::Values => Cell { value: val.map(|f| f.into().into()), formatting: None },
-                    super::GridType::Formatting => Cell { value: None, formatting: val.map(|f| f.into().into()) },
-                }
+                Cell { value: None, formatting: Some(val) }
+            };
+            self.cells[x][y] = Some(cell)
+        }
+
+        pub fn merge_in_value<T: Into<String>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
+            let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
+                Cell { value: val.map(|f| f.into().into()), formatting: prev_cell.formatting.clone() }
+            } else {
+                Cell { value: val.map(|f| f.into().into()), formatting: None }
             };
             // TODO check oob
             self.cells[x][y] = Some(cell)
@@ -204,7 +204,7 @@ impl Grid {
 
                 for (xi, cell) in cells.into_iter().enumerate() {
                     // This gets automatically duck-typed
-                    grid.merge_in_data((xi, yi), cell);
+                    grid.merge_in_value((xi, yi), cell);
                 }
             }
         });

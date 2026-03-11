@@ -20,11 +20,11 @@ use crate::app::{
     clipboard::Clipboard,
     error_msg::StatusMessage,
     logic::{
-        cell::{Cell, CellType, FormatRule},
+        cell::{Cell, CellType, FormatRule, Formatting},
         context::ExtractionContext,
         grid::{GRID_LEN, Grid, GridType, get_header_size},
     },
-    mode::{FormatEditor, Mode, RuleEditor, RulesViewer},
+    mode::{ALL_COLORS, EditingState, FormatEditorMode, Mode, RuleEditor, RulesViewer},
     screen::ScreenSpace,
 };
 
@@ -114,6 +114,11 @@ impl Widget for &App {
         let cell_width = self.screen.get_cell_width(&self.vars) as u16;
         let cell_height = self.screen.get_cell_height(&self.vars) as u16;
 
+        let (header_dark, header_light) = match self.grid.get_mode() {
+            GridType::Values => (Color::Rgb(200, 160, 0), Color::Rgb(180, 130, 0)),
+            GridType::Formatting => (Color::Rgb(0, 160, 200), Color::Rgb(0, 130, 180)),
+        };
+
         for x in 0..x_max {
             for y in 0..y_max {
                 let mut display = String::new();
@@ -135,9 +140,6 @@ impl Widget for &App {
                 if x_idx > GRID_LEN - 1 {
                     continue;
                 }
-
-                const ORANGE1: Color = Color::Rgb(200, 160, 0);
-                const ORANGE2: Color = Color::Rgb(180, 130, 0);
 
                 let mut should_render = true;
                 let mut suggest_upper_bound = None;
@@ -164,9 +166,9 @@ impl Widget for &App {
                         let bg = if y_idx == self.grid.cursor().1 {
                             Color::DarkGray
                         } else if y_idx.is_multiple_of(2) {
-                            ORANGE1
+                            header_dark
                         } else {
-                            ORANGE2
+                            header_light
                         };
                         style = Style::new().fg(Color::White).bg(bg);
                     }
@@ -177,9 +179,9 @@ impl Widget for &App {
                         let bg = if x_idx == self.grid.cursor().0 {
                             Color::DarkGray
                         } else if x_idx.is_multiple_of(2) {
-                            ORANGE1
+                            header_dark
                         } else {
-                            ORANGE2
+                            header_light
                         };
 
                         style = Style::new().fg(Color::White).bg(bg)
@@ -445,21 +447,6 @@ impl App {
         );
 
         self.mode.render(frame, cmd_line_left, current_cell_string.clone());
-        /*
-        if let GridType::Formatting = self.grid.get_mode() {
-            let a = frame.area();
-            let width = min(25, a.width); // don't draw oob
-            let height = min(20, a.height);
-            let xpos = (a.width / 2).saturating_sub(width/ 2); // centered
-            let ypos = (a.height / 2).saturating_sub(height / 2);
-            let area = Rect::new(xpos, ypos, width, height);
-
-            let fe = FormatEditor {
-                cell: self.grid.get_cell_raw(x, y).clone(),
-            };
-            frame.render_widget(fe, area);
-        }
-        */
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -504,9 +491,9 @@ impl App {
                         let cursor = self.grid.cursor();
                         self.grid.transact_on_grid(|grid| {
                             if !v.is_empty() {
-                                grid.merge_in_data(cursor, Some(v.to_owned()));
+                                grid.merge_in_value(cursor, Some(v.to_owned()));
                             } else {
-                                grid.merge_in_data::<String>(cursor, None);
+                                grid.merge_in_value::<String>(cursor, None);
                             }
                         });
 
@@ -522,11 +509,18 @@ impl App {
                 },
                 _ => {}
             },
-            Mode::Formatting(mode) => {
-                match mode {
-                    FormatEditor::Viewer(v) => {
+            Mode::Formatting(fmt) => {
+                match &mut fmt.mode {
+                    FormatEditorMode::Viewer(v) => {
                         if let event::Event::Key(key) = event::read()? {
                             match key.code {
+                                event::KeyCode::Enter => {
+                                    let c = self.grid.cursor();
+                                    self.grid.transact_on_grid(|f| {
+                                        f.merge_in_formatting(c, fmt.cell.formatting.as_ref().unwrap().clone() )
+                                    });
+                                    self.mode = Mode::Normal;
+                                }
                                 event::KeyCode::Esc => {
                                     // just cancel the operation
                                     self.mode = Mode::Normal;
@@ -535,15 +529,23 @@ impl App {
                                     match char {
                                         // TODO need to do proper array indexing
                                         'O' => {}
-                                        'o' => v
-                                            .rules
-                                            .push(FormatRule::EQ(0., Style::new().bg(Color::Blue).fg(Color::Magenta))),
+                                        'o' => {
+                                            if let Some(fmt) = &mut fmt.cell.formatting {
+                                                fmt.rules.push(FormatRule::EQ(
+                                                    0.,
+                                                    Style::new().bg(Color::Blue).fg(Color::Magenta),
+                                                ))
+                                            } else {
+                                                fmt.cell.formatting = Some(Formatting::default())
+                                            }
+                                        }
                                         'j' => v.index += 1,
                                         'k' => v.index = v.index.saturating_sub(1),
-                                        'i' | 'a' => {
-                                            if let Some(r) = v.rules.get(v.index as usize) {
-                                                *mode = FormatEditor::Editor(r.clone().into())
-                                            }
+                                        'i' | 'a' | 'r' | 'A' | 'I' => {
+                                            fmt.mode = FormatEditorMode::Editor(RuleEditor::new(
+                                                fmt.cell.formatting.as_ref().unwrap().rules[v.index as usize].clone(),
+                                                v.index.into(),
+                                            ))
                                         }
                                         _ => {}
                                     }
@@ -552,19 +554,92 @@ impl App {
                             }
                         }
                     }
-                    FormatEditor::Editor(editor) => {
+                    FormatEditorMode::Editor(editor) => {
                         if let event::Event::Key(key) = event::read()? {
                             match key.code {
-                                event::KeyCode::Esc => {
-                                    let (x, y) = self.grid.cursor();
-                                    *mode =
-                                        FormatEditor::Viewer(RulesViewer::new(self.grid.get_cell_raw(x, y).clone()));
-                                }
-                                event::KeyCode::Char(char) => match char {
-                                    'j' => {}
-                                    'k' => {}
-                                    _ => {}
+                                event::KeyCode::Esc => match editor.editing {
+                                    EditingState::Selecting(_) => {
+                                        fmt.mode = FormatEditorMode::Viewer(RulesViewer::default())
+                                    }
+                                    EditingState::Value(_)
+                                    | EditingState::FG(_)
+                                    | EditingState::BG(_)
+                                    | EditingState::Sign(_) => editor.editing = EditingState::Selecting(0),
                                 },
+                                event::KeyCode::Enter => match editor.editing {
+                                    EditingState::Selecting(i) => match i {
+                                        0 => editor.editing = EditingState::Sign(0),
+                                        1 => editor.editing = EditingState::Value(0),
+                                        2 => editor.editing = EditingState::FG(0),
+                                        3 => editor.editing = EditingState::BG(0),
+                                        4 => {
+                                            if let Some(f) = &mut fmt.cell.formatting {
+                                                f.rules[editor.cell_rule_index] = editor.rule.clone()
+                                            }
+                                            fmt.mode = FormatEditorMode::Viewer(RulesViewer::default())
+                                        }
+                                        5 => fmt.mode = FormatEditorMode::Viewer(RulesViewer::default()),
+                                        _ => {}
+                                    },
+                                    EditingState::Value(i) => todo!(),
+                                    EditingState::Sign(i) => {
+                                        // save threashold and style
+                                        let t = editor.rule.get_threashold();
+                                        let s = editor.rule.get_style();
+                                        match i {
+                                            0 => {
+                                                editor.rule = FormatRule::EQ(t, s);
+                                            }
+                                            1 => {
+                                                editor.rule = FormatRule::GT(t, s);
+                                            }
+                                            2 => {
+                                                editor.rule = FormatRule::LT(t, s);
+                                            }
+                                            _ => {}
+                                        }
+                                        editor.editing = EditingState::Selecting(0)
+                                    }
+                                    EditingState::FG(i) => {
+                                        if let Some(color) = ALL_COLORS.get(i) {
+                                            let s = editor.rule.get_style_mut();
+                                            *s = s.fg(*color);
+                                        } else {
+                                            todo!()
+                                        }
+                                        editor.editing = EditingState::Selecting(0)
+                                    }
+                                    EditingState::BG(i) => {
+                                        if let Some(color) = ALL_COLORS.get(i) {
+                                            let s = editor.rule.get_style_mut();
+                                            *s = s.bg(*color);
+                                        }
+                                        editor.editing = EditingState::Selecting(0)
+                                    }
+                                },
+                                event::KeyCode::Char(char) => {
+                                    match &mut editor.editing {
+                                        EditingState::Selecting(i) => match char {
+                                            'j' => *i = min(*i + 1, 5),
+                                            'k' => *i = i.saturating_sub(1),
+                                            _ => {}
+                                        },
+                                        EditingState::Value(i) => {
+                                            char;
+                                            // TODO - editor
+                                        }
+                                        EditingState::Sign(i) => match char {
+                                            'j' => *i = min(*i + 1, 2),
+                                            'k' => *i = i.saturating_sub(1),
+                                            _ => {}
+                                        },
+                                        EditingState::FG(i) | EditingState::BG(i) => match char {
+                                            'j' => *i = min(*i + 1, 15),
+                                            'k' => *i = i.saturating_sub(1),
+                                            _ => {}
+                                        },
+                                    };
+                                }
                                 _ => {}
                             }
                         }
