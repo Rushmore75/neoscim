@@ -73,6 +73,7 @@ where
             FormatRule::EQ(v, _style) => v.clone(),
         }
     }
+
     pub fn get_style_mut(&mut self) -> &mut Style {
         match self {
             FormatRule::GT(_, style) => style,
@@ -88,12 +89,14 @@ where
             FormatRule::EQ(_, style) => style.clone(),
         }
     }
+
     pub fn style_string(&self) -> (String, String) {
         let s = self.get_style();
         let fg = if let Some(f) = s.fg { f.to_string() } else { "None".to_string() };
         let bg = if let Some(b) = s.bg { b.to_string() } else { "None".to_string() };
         (fg, bg)
     }
+
     pub fn sign_char(&self) -> char {
         match self {
             FormatRule::GT(_, _) => '>',
@@ -112,6 +115,17 @@ impl Display for Formatting {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let len = self.rules.len();
         if len == 1 { write!(f, "{len} rule") } else { write!(f, "{len} rules") }
+    }
+}
+
+impl Formatting {
+    pub fn eval_for_style(&self, v: f64) -> Style {
+        for r in &self.rules {
+            if r.does_rule_apply(v) {
+                return r.get_style()
+            }
+        }
+        Style::default()
     }
 }
 

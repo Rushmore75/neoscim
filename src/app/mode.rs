@@ -623,10 +623,8 @@ impl Widget for &FormatEditor {
         let primary = Style::new().fg(Color::White).bg(Color::Black);
         let primary_inverse = Style::default().fg(Color::Black).bg(Color::White);
 
+        let mut title ;
         let block = Block::default()
-            .title("Formatter")
-            .title_style(primary)
-            .title_alignment(layout::Alignment::Center)
             .border_type(ratatui::widgets::BorderType::Rounded)
             .borders(Borders::all())
             .style(secondary);
@@ -637,6 +635,7 @@ impl Widget for &FormatEditor {
 
         match &self.mode {
             FormatEditorMode::Viewer(rules_viewer) => {
+                title = "Format Rules";
                 let line = Rect::new(inner.x, inner.y, inner.width, 1);
                 let display = self.cell.value_string();
                 let display = if display.is_empty() { "Empty".to_string() } else { display };
@@ -656,10 +655,14 @@ impl Widget for &FormatEditor {
                         fmt.render(line, buf);
                     });
                 }
+
+                let line = line.offset(Offset { x: 0, y: inner.height.into() });
+                Paragraph::new("'s' to save").centered().style(secondary).render(line, buf);
             }
             FormatEditorMode::Editor(rule_editor) => {
                 match rule_editor.editing {
                     EditingState::Selecting(index) => {
+                        title = "Formatter";
                         let mut sign_color = primary;
                         let mut value_color = primary;
                         let mut fg_color = primary;
@@ -758,9 +761,11 @@ impl Widget for &FormatEditor {
                         Paragraph::new("No").style(no_color).render(sub[2], buf);
                     }
                     EditingState::Value(index) => {
+                        title = "Value";
                         inner;
                     }
                     EditingState::Sign(index) => {
+                        title = "Choose Sign";
                         let mut eq_color = primary;
                         let mut gt_color = primary;
                         let mut lt_color = primary;
@@ -802,6 +807,7 @@ impl Widget for &FormatEditor {
                         Paragraph::new("Less than (<)").style(lt_color).render(lt, buf);
                     }
                     EditingState::BG(index) | EditingState::FG(index) => {
+                        title = "Select Color";
                         let mut area = Rect::new(inner.x, inner.y, inner.width, 1);
                         for (i, c) in ALL_COLORS.iter().enumerate() {
                             let style = if i == index { primary_inverse } else { primary };
@@ -812,6 +818,9 @@ impl Widget for &FormatEditor {
                 }
             }
         }
+
+        let line = Rect::new(inner.x, inner.y-1, (title.len() as u16), 1);
+        Paragraph::new(title).centered().style(primary).render(line, buf);
     }
 }
 

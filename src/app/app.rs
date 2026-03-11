@@ -194,7 +194,12 @@ impl Widget for &App {
                                     GridType::Values => {
                                         if let Some(v) = &cell.value {
                                             match v {
-                                                CellType::Number(c) => display = c.to_string(),
+                                                CellType::Number(c) => {
+                                                    display = c.to_string();
+                                                    if let Some(fmt) = &cell.formatting {
+                                                        style = fmt.eval_for_style(*c);
+                                                    }
+                                                }
                                                 CellType::String(s) => {
                                                     display = s.to_owned();
                                                     style = Style::new().fg(Color::LightMagenta)
@@ -515,11 +520,10 @@ impl App {
                         if let event::Event::Key(key) = event::read()? {
                             match key.code {
                                 event::KeyCode::Enter => {
-                                    let c = self.grid.cursor();
-                                    self.grid.transact_on_grid(|f| {
-                                        f.merge_in_formatting(c, fmt.cell.formatting.as_ref().unwrap().clone() )
-                                    });
-                                    self.mode = Mode::Normal;
+                                    fmt.mode = FormatEditorMode::Editor(RuleEditor::new(
+                                        fmt.cell.formatting.as_ref().unwrap().rules[v.index as usize].clone(),
+                                        v.index.into(),
+                                    ))
                                 }
                                 event::KeyCode::Esc => {
                                     // just cancel the operation
@@ -531,21 +535,24 @@ impl App {
                                         'O' => {}
                                         'o' => {
                                             if let Some(fmt) = &mut fmt.cell.formatting {
-                                                fmt.rules.push(FormatRule::EQ(
-                                                    0.,
-                                                    Style::new().bg(Color::Blue).fg(Color::Magenta),
-                                                ))
+                                                fmt.rules.push(FormatRule::EQ(0., Style::default()))
                                             } else {
-                                                fmt.cell.formatting = Some(Formatting::default())
+                                                let mut ing = Formatting::default();
+                                                ing.rules.push(FormatRule::EQ(0., Style::default()));
+
+                                                fmt.cell.formatting = Some(ing);
                                             }
                                         }
                                         'j' => v.index += 1,
                                         'k' => v.index = v.index.saturating_sub(1),
-                                        'i' | 'a' | 'r' | 'A' | 'I' => {
-                                            fmt.mode = FormatEditorMode::Editor(RuleEditor::new(
-                                                fmt.cell.formatting.as_ref().unwrap().rules[v.index as usize].clone(),
-                                                v.index.into(),
-                                            ))
+                                        's' => {
+                                            let c = self.grid.cursor();
+                                            self.grid.transact_on_grid(|grid| {
+                                                if let Some(f) = &fmt.cell.formatting {
+                                                    grid.merge_in_formatting(c, f.clone());
+                                                }
+                                            });
+                                            self.mode = Mode::Normal;
                                         }
                                         _ => {}
                                     }
@@ -634,7 +641,7 @@ impl App {
                                             _ => {}
                                         },
                                         EditingState::FG(i) | EditingState::BG(i) => match char {
-                                            'j' => *i = min(*i + 1, 15),
+                                            'j' => *i = min(*i + 1, ALL_COLORS.len() - 1),
                                             'k' => *i = i.saturating_sub(1),
                                             _ => {}
                                         },
