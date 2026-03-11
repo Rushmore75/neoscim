@@ -1,4 +1,4 @@
-use crate::app::logic::{cell::Cell, grid::Grid};
+use crate::app::logic::{cell::Cell, grid::{Grid, GridType}};
 
 #[cfg(test)]
 use crate::app::{
@@ -44,6 +44,8 @@ impl Clipboard {
         // cursor
         let (cx, cy) = into.cursor();
 
+        let mode = into.get_mode();
+
         let cursor = into.cursor();
         into.transact_on_grid(|grid| {
             // iterate thru the clipbaord's cells
@@ -55,7 +57,14 @@ impl Clipboard {
                         if let Some(cell) = cell {
                             let trans = cell.translate_cell(self.source_cell, cursor);
                             // FIXME need to merge in data
-                            grid.set_cell_raw(idx, Some(trans));
+                            match mode {
+                                GridType::Values => {
+                                    grid.merge_in_value(idx, trans.value)
+                                },
+                                GridType::Formatting => {
+                                    grid.merge_in_formatting(idx, trans.formatting)
+                                },
+                            }
                         } else {
                             // The cell at this location doesn't exist (empty)
                             grid.set_cell_raw::<Cell>(idx, None);

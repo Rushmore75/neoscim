@@ -549,7 +549,7 @@ impl App {
                                             let c = self.grid.cursor();
                                             self.grid.transact_on_grid(|grid| {
                                                 if let Some(f) = &fmt.cell.formatting {
-                                                    grid.merge_in_formatting(c, f.clone());
+                                                    grid.merge_in_formatting(c, Some(f.clone()));
                                                 }
                                             });
                                             self.mode = Mode::Normal;

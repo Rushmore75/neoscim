@@ -31,7 +31,7 @@ static mut GRID_TYPE: GridType = GridType::Values;
 
 mod internal {
     use crate::app::logic::{
-        cell::{Cell, Formatting},
+        cell::{Cell, CellType, Formatting},
         grid::GRID_LEN,
     };
 
@@ -89,20 +89,20 @@ mod internal {
             }
         }
 
-        pub fn merge_in_formatting(&mut self, (x, y): (usize, usize), val: Formatting) {
+        pub fn merge_in_formatting(&mut self, (x, y): (usize, usize), val: Option<Formatting>) {
             let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
-                Cell { value: prev_cell.value.clone(), formatting: Some(val) }
+                Cell { value: prev_cell.value.clone(), formatting: val }
             } else {
-                Cell { value: None, formatting: Some(val) }
+                Cell { value: None, formatting: val }
             };
             self.cells[x][y] = Some(cell)
         }
 
-        pub fn merge_in_value<T: Into<String>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
+        pub fn merge_in_value<T: Into<CellType>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
             let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
-                Cell { value: val.map(|f| f.into().into()), formatting: prev_cell.formatting.clone() }
+                Cell { value: val.map(|f| f.into()), formatting: prev_cell.formatting.clone() }
             } else {
-                Cell { value: val.map(|f| f.into().into()), formatting: None }
+                Cell { value: val.map(|f| f.into()), formatting: None }
             };
             // TODO check oob
             self.cells[x][y] = Some(cell)
