@@ -96,6 +96,8 @@ But putting it in `/opt/neoscim/` would also be a standard location.
 | `:w <file>` | Saves changes to `file`, setting it as the default file if there is not already one |
 | `:q` | Quit program |
 | `:q!` | Quit program, even if the file isn't saved |
+| `:format` | Enter formatting mode |
+| `:edit` | Enter editing mode (default) |
 
 #### Visual mode commands
 
