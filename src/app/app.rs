@@ -195,9 +195,7 @@ impl Widget for &App {
                                             match v {
                                                 CellType::Number(c) => {
                                                     display = c.to_string();
-                                                    if let Some(fmt) = &cell.formatting {
-                                                        style = fmt.eval_for_style(*c);
-                                                    }
+                                                    style = cell.formatting.eval_for_style(*c);
                                                 }
                                                 CellType::String(s) => {
                                                     display = s.to_owned();
@@ -228,7 +226,7 @@ impl Widget for &App {
                                         }
                                     }
                                     GridType::Formatting => {
-                                        if let None = cell.formatting {
+                                        if cell.formatting.rules.is_empty() {
                                             display = cell.value_string();
                                             style = Style::new().bg(Color::DarkGray).add_modifier(Modifier::ITALIC);
                                         } else {
@@ -334,7 +332,11 @@ impl App {
         }
     }
 
-    pub fn new_with_file<P>(file: P) -> std::io::Result<Self> where P: AsRef<Path> + Clone, PathBuf: From<P>  {
+    pub fn new_with_file<P>(file: P) -> std::io::Result<Self>
+    where
+        P: AsRef<Path> + Clone,
+        PathBuf: From<P>,
+    {
         let mut app = Self::new();
         app.grid = Grid::new_from_file(file.clone())?;
         app.file = Some(file.into());
@@ -508,10 +510,13 @@ impl App {
                         if let event::Event::Key(key) = event::read()? {
                             match key.code {
                                 event::KeyCode::Enter => {
-                                    fmt.mode = FormatEditorMode::Editor(RuleEditor::new(
-                                        fmt.cell.formatting.as_ref().unwrap().rules[v.index as usize].clone(),
-                                        v.index.into(),
-                                    ))
+                                    let rules = &mut fmt.cell.formatting.rules;
+                                    if (v.index as usize) < rules.len() {
+                                        fmt.mode = FormatEditorMode::Editor(RuleEditor::new(
+                                            rules[v.index as usize].clone(),
+                                            v.index.into(),
+                                        ))
+                                    }
                                 }
                                 event::KeyCode::Esc => {
                                     // just cancel the operation
@@ -521,24 +526,18 @@ impl App {
                                     match char {
                                         // TODO need to do proper array indexing
                                         'O' => {}
-                                        'o' => {
-                                            if let Some(fmt) = &mut fmt.cell.formatting {
-                                                fmt.rules.push(FormatRule::EQ(0., Style::default()))
-                                            } else {
-                                                let mut ing = Formatting::default();
-                                                ing.rules.push(FormatRule::EQ(0., Style::default()));
-
-                                                fmt.cell.formatting = Some(ing);
-                                            }
+                                        'o' => fmt.cell.formatting.rules.push(FormatRule::EQ(0., Style::default())),
+                                        'j' => {
+                                            v.index = min(
+                                                v.index + 1,
+                                                fmt.cell.formatting.rules.len().saturating_sub(1) as u16,
+                                            )
                                         }
-                                        'j' => v.index += 1,
                                         'k' => v.index = v.index.saturating_sub(1),
                                         's' => {
                                             let c = self.grid.cursor();
                                             self.grid.transact_on_grid(|grid| {
-                                                if let Some(f) = &fmt.cell.formatting {
-                                                    grid.merge_in_formatting(c, Some(f.clone()));
-                                                }
+                                                grid.merge_in_formatting(c, fmt.cell.formatting.clone());
                                             });
                                             self.mode = Mode::Normal;
                                         }
@@ -568,9 +567,7 @@ impl App {
                                         2 => editor.editing = EditingState::FG(0),
                                         3 => editor.editing = EditingState::BG(0),
                                         4 => {
-                                            if let Some(f) = &mut fmt.cell.formatting {
-                                                f.rules[editor.cell_rule_index] = editor.rule.clone()
-                                            }
+                                            fmt.cell.formatting.rules[editor.cell_rule_index] = editor.rule.clone();
                                             fmt.mode = FormatEditorMode::Viewer(RulesViewer::default())
                                         }
                                         5 => fmt.mode = FormatEditorMode::Viewer(RulesViewer::default()),

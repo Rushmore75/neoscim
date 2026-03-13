@@ -623,7 +623,7 @@ impl Widget for &FormatEditor {
         let primary = Style::new().fg(Color::White).bg(Color::Black);
         let primary_inverse = Style::default().fg(Color::Black).bg(Color::White);
 
-        let mut title ;
+        let mut title;
         let block = Block::default()
             .border_type(ratatui::widgets::BorderType::Rounded)
             .borders(Borders::all())
@@ -649,12 +649,10 @@ impl Widget for &FormatEditor {
 
                 let scroll = 0; // For later when we might have longer rules lists
 
-                if let Some(f) = &self.cell.formatting {
-                    f.rules.iter().skip(scroll).zip(1..inner.height).for_each(|(fmt, offset)| {
-                        let line = line.offset(Offset { x: 0, y: offset as i32 });
-                        fmt.render(line, buf);
-                    });
-                }
+                self.cell.formatting.rules.iter().skip(scroll).zip(1..inner.height).for_each(|(fmt, offset)| {
+                    let line = line.offset(Offset { x: 0, y: offset as i32 });
+                    fmt.render(line, buf);
+                });
 
                 let line = line.offset(Offset { x: 0, y: inner.height.into() });
                 Paragraph::new("'s' to save").centered().style(secondary).render(line, buf);
@@ -691,8 +689,8 @@ impl Widget for &FormatEditor {
                         let comparitor = layout[1];
                         let then = layout[2];
                         let fg = layout[3];
-                        let bg= layout[4];
-                        let submit= layout[5];
+                        let bg = layout[4];
+                        let submit = layout[5];
 
                         match index {
                             0 => {
@@ -707,12 +705,8 @@ impl Widget for &FormatEditor {
                             3 => {
                                 bg_color = primary_inverse;
                             }
-                            4 => {
-                                yes_color = primary_inverse
-                            }
-                            5 => {
-                                no_color = primary_inverse
-                            }
+                            4 => yes_color = primary_inverse,
+                            5 => no_color = primary_inverse,
                             _ => {}
                         }
 
@@ -732,29 +726,19 @@ impl Widget for &FormatEditor {
                         Paragraph::new("then color:").style(secondary).render(then, buf);
                         let fg = Layout::default()
                             .direction(layout::Direction::Horizontal)
-                            .constraints([
-                                Constraint::Max(3),
-                                Constraint::Fill(1),
-                            ])
+                            .constraints([Constraint::Max(3), Constraint::Fill(1)])
                             .split(fg);
                         Paragraph::new("FG").style(secondary).render(fg[0], buf);
                         Paragraph::new(rule_editor.rule.style_string().0).style(fg_color).render(fg[1], buf);
                         let bg = Layout::default()
                             .direction(layout::Direction::Horizontal)
-                            .constraints([
-                                Constraint::Max(3),
-                                Constraint::Fill(1),
-                            ])
+                            .constraints([Constraint::Max(3), Constraint::Fill(1)])
                             .split(bg);
                         Paragraph::new("BG").style(secondary).render(bg[0], buf);
                         Paragraph::new(rule_editor.rule.style_string().1).style(bg_color).render(bg[1], buf);
                         let sub = Layout::default()
                             .direction(layout::Direction::Horizontal)
-                            .constraints([
-                                Constraint::Fill(1),
-                                Constraint::Fill(1),
-                                Constraint::Fill(1),
-                            ])
+                            .constraints([Constraint::Fill(1), Constraint::Fill(1), Constraint::Fill(1)])
                             .split(submit);
                         Paragraph::new("Submit?").style(secondary).render(sub[0], buf);
                         Paragraph::new("Yes").style(yes_color).render(sub[1], buf);
@@ -819,7 +803,7 @@ impl Widget for &FormatEditor {
             }
         }
 
-        let line = Rect::new(inner.x, inner.y-1, (title.len() as u16), 1);
+        let line = Rect::new(inner.x, inner.y - 1, (title.len() as u16), 1);
         Paragraph::new(title).centered().style(primary).render(line, buf);
     }
 }

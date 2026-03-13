@@ -25,7 +25,7 @@ where
 impl FormatRule<f64> {
     pub fn serialize(&self) -> String {
         let mut buf = String::new();
-        match self {
+        let _ = match self {
             FormatRule::GT(v, style) => {
                 write!(buf, ">,{v},{},{}", style.fg.unwrap_or_default(), style.bg.unwrap_or_default())
             }
@@ -187,31 +187,21 @@ impl Formatting {
 #[derive(Clone)]
 pub struct Cell {
     pub value: Option<CellType>,
-    pub formatting: Option<Formatting>,
+    pub formatting: Formatting,
 }
 
 impl Default for Cell {
     fn default() -> Self {
-        Self { value: None, formatting: None }
+        Self { value: None, formatting: Formatting::default() }
     }
 }
 
 impl Cell {
     pub fn push_rule(&mut self, rule: FormatRule<f64>) {
-        match &mut self.formatting {
-            Some(f) => f.rules.push(rule),
-            None => {
-                let mut f = Formatting::default();
-                f.rules.push(rule);
-                self.formatting = Some(f);
-            }
-        }
+        self.formatting.rules.push(rule)
     }
     pub fn format_string(&self) -> String {
-        if let Some(v) = &self.formatting {
-            return v.to_string();
-        }
-        String::new()
+        self.formatting.to_string()
     }
 
     pub fn value_string(&self) -> String {
@@ -357,7 +347,7 @@ where
     S: ToString,
 {
     fn from(value: S) -> Self {
-        Cell { value: Some(value.to_string().into()), formatting: None }
+        Cell { value: Some(value.to_string().into()), ..Default::default() }
     }
 }
 

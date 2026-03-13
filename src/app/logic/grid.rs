@@ -89,7 +89,7 @@ mod internal {
             }
         }
 
-        pub fn merge_in_formatting(&mut self, (x, y): (usize, usize), val: Option<Formatting>) {
+        pub fn merge_in_formatting(&mut self, (x, y): (usize, usize), val: Formatting) {
             let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
                 Cell { value: prev_cell.value.clone(), formatting: val }
             } else {
@@ -102,7 +102,7 @@ mod internal {
             let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
                 Cell { value: val.map(|f| f.into()), formatting: prev_cell.formatting.clone() }
             } else {
-                Cell { value: val.map(|f| f.into()), formatting: None }
+                Cell { value: val.map(|f| f.into()), ..Default::default() }
             };
             // TODO check oob
             self.cells[x][y] = Some(cell)
@@ -232,13 +232,11 @@ impl Grid {
                         let mut fmt = Formatting::default();
                         // read old formatting value out of the existing cell
                         if let Some(cell) = grid.get_cell_raw(x, y) {
-                            if let Some(formatting) = cell.formatting.clone() {
-                                fmt = formatting;
-                            }
+                            fmt = cell.formatting.clone();
                         }
                         // merge all formatting rules together and put it in the grid
                         fmt.rules.push(rule);
-                        grid.merge_in_formatting((x, y), Some(fmt));
+                        grid.merge_in_formatting((x, y), fmt);
                     };
                 }
             }
@@ -302,9 +300,7 @@ impl Grid {
                         }
                     } else {
                         data_line.push(cell.value_string());
-                        if let Some(fmt) = &cell.formatting {
-                            style_line.push((fmt, (x, y)));
-                        }
+                        style_line.push((&cell.formatting, (x,y)));
                     }
                 } else {
                     data_line.push("".to_string());
