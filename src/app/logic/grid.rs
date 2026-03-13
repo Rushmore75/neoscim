@@ -2,13 +2,13 @@ use std::{
     cmp::{max, min},
     fs::{self, File},
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use evalexpr::*;
 
 use crate::app::logic::{
-    cell::{CSV_DELIMITER, Cell, CellType},
+    cell::{CSV_DELIMITER, Cell, CellType, FormatRule, Formatting},
     context::CallbackContext,
     grid::internal::CellGrid,
 };
@@ -192,19 +192,54 @@ impl Grid {
         unsafe { GRID_TYPE = GridType::Values }
     }
 
-    pub fn new_from_file(file: &mut File) -> std::io::Result<Self> {
+    pub fn new_from_file(file: impl Into<PathBuf>) -> std::io::Result<Self> {
+        let mut file = file.into();
         let mut grid = Self::new();
 
+        let mut csv_reader = csv::ReaderBuilder::new().flexible(true).has_headers(false).from_path(&file)?;
+        file.add_extension("style");
+        let mut style_reader = fs::OpenOptions::new().read(true).open(file)?;
         let mut buf = String::new();
-        file.read_to_string(&mut buf)?;
+        style_reader.read_to_string(&mut buf)?;
 
         grid.transact_on_grid(|grid| {
-            for (yi, line) in buf.lines().enumerate() {
-                let cells = Self::parse_csv_line(line);
+            // injest data csv
+            csv_reader.records().enumerate().for_each(|(yi, f)| {
+                if let Ok(line) = f {
+                    for xi in 0..GRID_LEN {
+                        if let Some(value) = line.get(xi) {
+                            if !value.is_empty() {
+                                grid.merge_in_value((xi, yi), Some(value));
+                            }
+                        }
+                    }
+                }
+            });
 
-                for (xi, cell) in cells.into_iter().enumerate() {
-                    // This gets automatically duck-typed
-                    grid.merge_in_value((xi, yi), cell);
+            // injest style file
+            for line in buf.lines() {
+                let splits = line.split(')').collect::<Vec<&str>>();
+                let location = splits[0];
+                let fmt = splits[1];
+                let location = location.replace('(', "");
+                let xy = location.split(',').collect::<Vec<&str>>();
+                let x = xy[0].parse::<usize>();
+                let y = xy[1].parse::<usize>();
+
+                // if all the data is good...
+                if let (Ok(x), Ok(y)) = (x, y) {
+                    if let Some(rule) = FormatRule::deserialize(fmt) {
+                        let mut fmt = Formatting::default();
+                        // read old formatting value out of the existing cell
+                        if let Some(cell) = grid.get_cell_raw(x, y) {
+                            if let Some(formatting) = cell.formatting.clone() {
+                                fmt = formatting;
+                            }
+                        }
+                        // merge all formatting rules together and put it in the grid
+                        fmt.rules.push(rule);
+                        grid.merge_in_formatting((x, y), Some(fmt));
+                    };
                 }
             }
         });
@@ -220,55 +255,72 @@ impl Grid {
     pub fn save_to(&mut self, path: impl Into<PathBuf>) -> std::io::Result<()> {
         let mut path = path.into();
 
-        let resolve_values;
+        let is_csv_file;
 
         match path.extension() {
             Some(ext) => match ext.to_str() {
                 Some(CSV_EXT) => {
-                    resolve_values = true;
+                    is_csv_file = true;
                 }
                 Some(CUSTOM_EXT) => {
-                    resolve_values = false;
+                    is_csv_file = false;
                 }
                 _ => {
-                    // File as an extension but isn't ours.
+                    // File has an extension but isn't ours.
                     // Save as csv-like
-                    resolve_values = true;
+                    is_csv_file = true;
                 }
             },
             None => {
                 // File has no extension. Save it as our file type
-                resolve_values = false;
+                is_csv_file = false;
                 path.add_extension(CUSTOM_EXT);
             }
         }
 
-        let mut f = fs::OpenOptions::new().write(true).append(false).truncate(true).create(true).open(path)?;
+        let mut data_csv = csv::WriterBuilder::new().has_headers(false).from_path(&path)?;
+        path.add_extension("style");
+        let mut formatting_file =
+            fs::OpenOptions::new().truncate(true).append(false).write(true).create(true).open(path)?;
+
         let (mx, my) = self.get_grid().max();
         for y in 0..=my {
+            let mut data_line = Vec::with_capacity(mx);
+            let mut style_line = Vec::new();
+
+            // gather data from grid
             for x in 0..=mx {
-                let cell = &self.get_grid().get_cell_raw(x, y);
+                let cell = self.get_grid().get_cell_raw(x, y);
 
-                // newline after the cell, because it's end of line.
-                // else, just put a comma after the cell.
-                let is_last = x == mx;
-                let delim = if is_last { '\n' } else { CSV_DELIMITER };
-
-                let data = if let Some(cell) = cell {
-                    if let Ok(val) = self.evaluate(&cell.value_string())
-                        && resolve_values
-                    {
-                        format!("{val}{delim}")
+                if let Some(cell) = cell {
+                    if is_csv_file {
+                        // don't save style if it's a csv
+                        if let Ok(val) = self.evaluate(&cell.value_string()) {
+                            data_line.push(val.to_string());
+                        } else {
+                            data_line.push(cell.value_string())
+                        }
                     } else {
-                        format!("{}{}", cell.escaped_csv_string(), delim)
+                        data_line.push(cell.value_string());
+                        if let Some(fmt) = &cell.formatting {
+                            style_line.push((fmt, (x, y)));
+                        }
                     }
                 } else {
-                    delim.to_string()
-                };
-                write!(f, "{data}")?;
+                    data_line.push("".to_string());
+                }
+            }
+
+            // write to disk
+            data_csv.write_record(data_line)?;
+            for (style, (x, y)) in style_line {
+                for rule in &style.rules {
+                    formatting_file.write(format!("({x},{y}){}\n", rule.serialize()).as_bytes())?;
+                }
             }
         }
-        f.flush()?;
+        data_csv.flush()?;
+        formatting_file.flush()?;
 
         self.dirty = false;
         Ok(())
@@ -669,11 +721,11 @@ fn saving_csv() {
     // insure that the cells are there
     let cell = app.grid.get_cell_raw(0, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.value_string()).expect("Should evaluate");
-    assert_eq!(res, (11.0).into());
+    assert_eq!(res, CellType::Number(11.0));
     assert_eq!(cell.escaped_csv_string(), "=A9+A$0");
     let cell = app.grid.get_cell_raw(1, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.value_string()).expect("Should evaluate");
-    assert_eq!(res, (121.0).into());
+    assert_eq!(res, CellType::Number(121.0));
     assert_eq!(cell.escaped_csv_string(), "=A10^2");
 
     // set saving the file
@@ -712,11 +764,11 @@ fn saving_neoscim() {
     // insure that the cells are there
     let cell = app.grid.get_cell_raw(0, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.value_string()).expect("Should evaluate");
-    assert_eq!(res, (11.0).into());
+    assert_eq!(res, CellType::Number(11.0));
     assert_eq!(cell.escaped_csv_string(), "=A9+A$0");
     let cell = app.grid.get_cell_raw(1, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.value_string()).expect("Should evaluate");
-    assert_eq!(res, (121.0).into());
+    assert_eq!(res, CellType::Number(121.0));
     assert_eq!(cell.escaped_csv_string(), "=A10^2");
 
     // set saving the file
@@ -778,31 +830,31 @@ fn valid_equations() {
     // cell math
     let cell = grid.get_cell("C0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.value_string()).expect("Should evaluate.");
-    assert_eq!(res, (3.).into());
+    assert_eq!(res, CellType::Number(3.));
 
     // divide floats
     grid.set_cell("D0", "=5./2.".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.value_string()).expect("Should be ok");
-    assert_eq!(res, (2.5).into());
+    assert_eq!(res, CellType::Number(2.5));
 
     // Float / Int mix
     grid.set_cell("D0", "=5./2".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.value_string()).expect("Should be ok");
-    assert_eq!(res, (2.5).into());
+    assert_eq!(res, CellType::Number(2.5));
 
     // divide "ints" (should become floats)
     grid.set_cell("D0", "=5/2".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.value_string()).expect("Should be ok");
-    assert_eq!(res, (2.5).into());
+    assert_eq!(res, CellType::Number(2.5));
 
     // Non-equation that should still be valid
     grid.set_cell("D0", "=10".to_string());
     let cell = grid.get_cell("D0").as_ref().expect("I just set this");
     let res = grid.evaluate(&cell.value_string()).expect("Should be ok");
-    assert_eq!(res, (10.).into());
+    assert_eq!(res, CellType::Number(10.));
 }
 
 // Cell = output of Cell = value of Cells.
@@ -822,7 +874,7 @@ fn fn_of_fn() {
         let res = grid.evaluate(&cell.value_string());
 
         assert!(res.is_ok());
-        assert_eq!(res.unwrap(), (6.).into());
+        assert_eq!(res.unwrap(), CellType::Number(6.));
         return;
     }
 }
@@ -859,7 +911,7 @@ fn invalid_equations() {
     let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.value_string());
     assert!(res.is_ok());
-    assert!(res.is_ok_and(|v| v == (10.).into()));
+    assert!(res.is_ok_and(|v| v == CellType::Number(10.)));
 
     // Trailing comma in function call
     grid.set_cell("A0", 5.);
@@ -867,7 +919,7 @@ fn invalid_equations() {
     grid.set_cell("B0", "=avg(A0,A1,)".to_string());
     let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.value_string());
-    assert_eq!(res.unwrap(), (7.5).into());
+    assert_eq!(res.unwrap(), CellType::Number(7.5));
 }
 
 #[test]
@@ -898,19 +950,19 @@ fn avg_function() {
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.value_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), (5.).into());
+    assert_eq!(res.unwrap(), CellType::Number(5.));
 
     grid.set_cell("A0", "=avg(5,10)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.value_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), (7.5).into());
+    assert_eq!(res.unwrap(), CellType::Number(7.5));
 
     grid.set_cell("A0", "=avg(5,10,15)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.value_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), (10.).into());
+    assert_eq!(res.unwrap(), CellType::Number(10.));
 
     grid.set_cell("A0", "=avg(foo)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
@@ -936,13 +988,13 @@ fn sum_function() {
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.value_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), (5.).into());
+    assert_eq!(res.unwrap(), CellType::Number(5.));
 
     grid.set_cell("A0", "=sum(5,10)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.value_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), (15.).into());
+    assert_eq!(res.unwrap(), CellType::Number(15.));
 
     grid.set_cell("A0", "=sum(foo)".to_string());
     let cell = grid.get_cell("A0").as_ref().expect("Just set the cell");
@@ -972,7 +1024,7 @@ fn xlookup_function() {
     let cell = grid.get_cell("B0").as_ref().expect("Just set the cell");
     let res = grid.evaluate(&cell.value_string());
     assert!(res.is_ok());
-    assert_eq!(res.unwrap(), (31.).into());
+    assert_eq!(res.unwrap(), CellType::Number(31.));
 }
 
 #[test]
@@ -1050,13 +1102,13 @@ fn ranges() {
     // range with numbers
     let cell = grid.get_cell("B0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.value_string()).expect("Should evaluate.");
-    assert_eq!(res, (3.).into());
+    assert_eq!(res, CellType::Number(3.));
 
     // use range output as input for other function
     grid.set_cell("B1", "=B0*2".to_string());
     let cell = grid.get_cell("B1").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.value_string()).expect("Should evaluate.");
-    assert_eq!(res, (6.).into());
+    assert_eq!(res, CellType::Number(6.));
 
     // use equation outputs as range input
     grid.set_cell("A2", "=C0+1".to_string());
@@ -1064,11 +1116,11 @@ fn ranges() {
 
     let cell = grid.get_cell("A2").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.value_string()).expect("Should evaluate.");
-    assert_eq!(res, (6.).into());
+    assert_eq!(res, CellType::Number(6.));
 
     let cell = grid.get_cell("B0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.value_string()).expect("Should evaluate.");
-    assert_eq!(res, (9.).into());
+    assert_eq!(res, CellType::Number(9.));
 
     // use function outputs as range input
     grid.set_cell("B1", 2.);
@@ -1077,7 +1129,7 @@ fn ranges() {
 
     let cell = grid.get_cell("C0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.value_string()).expect("Should evaluate.");
-    assert_eq!(res, (5.).into());
+    assert_eq!(res, CellType::Number(5.));
 
     // use range outputs as range input
     grid.set_cell("D0", "=sum(C:C)".to_string());
@@ -1085,7 +1137,7 @@ fn ranges() {
 
     let cell = grid.get_cell("D0").as_ref().expect("Just set it");
     let res = grid.evaluate(&cell.value_string()).expect("Should evaluate.");
-    assert_eq!(res, (6.).into());
+    assert_eq!(res, CellType::Number(6.));
 }
 
 #[test]
@@ -1315,7 +1367,7 @@ fn cell_eval_depth() {
     assert_eq!(c.value_string(), "=A5+$A$0");
 
     let res = app.grid.evaluate(&c.value_string()).expect("Should evaluate");
-    assert_eq!(res, (7.).into());
+    assert_eq!(res, CellType::Number(7.));
 }
 
 #[test]

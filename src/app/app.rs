@@ -2,7 +2,7 @@ use std::{
     cmp::{max, min},
     collections::HashMap,
     fs, io,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::SystemTime,
 };
 
@@ -33,7 +33,6 @@ pub struct App {
     pub grid: Grid,
     pub mode: Mode,
     pub file: Option<PathBuf>,
-    file_modified_date: SystemTime,
     pub msg: StatusMessage,
     pub vars: HashMap<String, String>,
     pub screen: ScreenSpace,
@@ -332,24 +331,13 @@ impl App {
             screen: ScreenSpace::new(),
             marks: HashMap::new(),
             clipboard: Clipboard::new(),
-            file_modified_date: SystemTime::now(),
         }
     }
 
-    pub fn new_with_file(file: impl Into<PathBuf> + Clone) -> std::io::Result<Self> {
+    pub fn new_with_file<P>(file: P) -> std::io::Result<Self> where P: AsRef<Path> + Clone, PathBuf: From<P>  {
         let mut app = Self::new();
-        app.file = Some(file.clone().into());
-
-        let mut file = fs::OpenOptions::new().read(true).open(file.into())?;
-        let metadata = file.metadata()?;
-        // Not all systems support this, apparently.
-        if let Ok(time) = metadata.modified() {
-            app.file_modified_date = time;
-        } else {
-            // Default is to just assume it was modified when we opened it.
-        }
-
-        app.grid = Grid::new_from_file(&mut file)?;
+        app.grid = Grid::new_from_file(file.clone())?;
+        app.file = Some(file.into());
         Ok(app)
     }
 

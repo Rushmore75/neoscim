@@ -1,6 +1,8 @@
 use std::fmt::Display;
+use std::fmt::Write;
 
 use evalexpr::eval_with_context;
+use ratatui::style::Color;
 use ratatui::{
     layout::{Constraint, Layout},
     style::Style,
@@ -8,6 +10,7 @@ use ratatui::{
 };
 
 use crate::app::logic::{context::ExtractionContext, grid::Grid};
+use crate::app::mode::ALL_COLORS;
 
 #[derive(Clone)]
 pub enum FormatRule<T>
@@ -17,6 +20,58 @@ where
     GT(T, Style),
     LT(T, Style),
     EQ(T, Style),
+}
+
+impl FormatRule<f64> {
+    pub fn serialize(&self) -> String {
+        let mut buf = String::new();
+        match self {
+            FormatRule::GT(v, style) => {
+                write!(buf, ">,{v},{},{}", style.fg.unwrap_or_default(), style.bg.unwrap_or_default())
+            }
+            FormatRule::LT(v, style) => {
+                write!(buf, "<,{v},{},{}", style.fg.unwrap_or_default(), style.bg.unwrap_or_default())
+            }
+            FormatRule::EQ(v, style) => {
+                write!(buf, "=,{v},{},{}", style.fg.unwrap_or_default(), style.bg.unwrap_or_default())
+            }
+        };
+        buf
+    }
+
+    pub fn deserialize(data: &str) -> Option<Self> {
+        let splits = data.split(',').collect::<Vec<&str>>();
+        if splits.len() == 4 {
+            let sign = splits[0];
+            let value = splits[1];
+            let fg = splits[2];
+            let bg = splits[3];
+
+            let mut style = Style::default();
+            for c in ALL_COLORS {
+                if c.to_string() == fg {
+                    style = style.fg(c);
+                }
+                if c.to_string() == bg {
+                    style = style.bg(c);
+                }
+            }
+
+            if let Ok(float) = value.parse::<f64>() {
+                if let Some(char1) = sign.chars().nth(0) {
+                    let v = match char1 {
+                        '=' => Self::EQ(float, style),
+                        '>' => Self::GT(float, style),
+                        '<' => Self::LT(float, style),
+                        _ => return None,
+                    };
+                    return Some(v);
+                };
+            }
+        }
+
+        None
+    }
 }
 
 impl<T> Widget for &FormatRule<T>
@@ -122,7 +177,7 @@ impl Formatting {
     pub fn eval_for_style(&self, v: f64) -> Style {
         for r in &self.rules {
             if r.does_rule_apply(v) {
-                return r.get_style()
+                return r.get_style();
             }
         }
         Style::default()
@@ -142,6 +197,16 @@ impl Default for Cell {
 }
 
 impl Cell {
+    pub fn push_rule(&mut self, rule: FormatRule<f64>) {
+        match &mut self.formatting {
+            Some(f) => f.rules.push(rule),
+            None => {
+                let mut f = Formatting::default();
+                f.rules.push(rule);
+                self.formatting = Some(f);
+            }
+        }
+    }
     pub fn format_string(&self) -> String {
         if let Some(v) = &self.formatting {
             return v.to_string();
@@ -156,6 +221,7 @@ impl Cell {
         String::new()
     }
 
+    #[deprecated]
     pub fn escaped_csv_string(&self) -> String {
         if let Some(v) = &self.value {
             return v.escaped_csv_string();
@@ -286,17 +352,12 @@ impl Cell {
     }
 }
 
-impl From<f64> for Cell {
-    fn from(value: f64) -> Self {
-        let v = CellType::duck_type(value.to_string());
-        Cell { value: Some(v), formatting: None }
-    }
-}
-
-impl From<String> for Cell {
-    fn from(value: String) -> Self {
-        let v = CellType::duck_type(value.to_string());
-        Cell { value: Some(v), formatting: None }
+impl<S> From<S> for Cell
+where
+    S: ToString,
+{
+    fn from(value: S) -> Self {
+        Cell { value: Some(value.to_string().into()), formatting: None }
     }
 }
 
@@ -313,15 +374,12 @@ impl Default for CellType {
     }
 }
 
-impl From<f64> for CellType {
-    fn from(value: f64) -> Self {
-        CellType::duck_type(value.to_string())
-    }
-}
-
-impl From<String> for CellType {
-    fn from(value: String) -> Self {
-        CellType::duck_type(value)
+impl<S> From<S> for CellType
+where
+    S: Into<String>,
+{
+    fn from(value: S) -> Self {
+        CellType::duck_type(value.into())
     }
 }
 
@@ -329,13 +387,14 @@ pub const CSV_DELIMITER: char = ',';
 const CSV_ESCAPE: char = '"';
 
 impl CellType {
+    #[deprecated]
     pub fn escaped_csv_string(&self) -> String {
         let mut display = self.to_string();
 
         // escape quotes " -> ""
-        let needs_escaping = display.char_indices().filter(|f| f.1 == CSV_ESCAPE).map(|f| f.0).collect::<Vec<usize>>();
+        let needs_escaping = display.char_indices().filter(|f| f.1 == '"').map(|f| f.0).collect::<Vec<usize>>();
         for idx in needs_escaping.iter().rev() {
-            display.insert(*idx, CSV_ESCAPE);
+            display.insert(*idx, '\\');
         }
 
         // escape string of it has a comma
@@ -373,4 +432,20 @@ impl PartialEq for CellType {
             _ => false,
         }
     }
+}
+
+#[test]
+fn to_string_variants() {
+    let mut c = Cell::from(20.1);
+    c.push_rule(FormatRule::GT(20., Style::default()));
+
+    assert_eq!(c.value_string(), "20.1");
+    assert_eq!(c.value.as_ref().unwrap().to_string(), "20.1");
+    assert_eq!(c.format_string(), "1 rule");
+}
+
+#[test]
+fn to_string_escape() {
+    let c = Cell::from("Hello, \"World\"!");
+    assert_eq!(c.value_string(), "Hello, \"World\"!");
 }
