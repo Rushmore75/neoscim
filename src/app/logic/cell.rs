@@ -114,9 +114,15 @@ where
 {
     fn does_rule_apply(&self, t: T) -> bool {
         match self {
-            FormatRule::GT(v, _style) => *v > t,
-            FormatRule::LT(v, _style) => *v < t,
+            FormatRule::GT(v, _style) => *v < t,
+            FormatRule::LT(v, _style) => *v > t,
             FormatRule::EQ(v, _style) => *v == t,
+        }
+    }
+
+    pub fn set_threashold(&mut self, t: T) {
+        match self {
+            FormatRule::GT(v, _) | FormatRule::LT(v, _) | FormatRule::EQ(v, _) => *v = t.clone(),
         }
     }
 
@@ -407,4 +413,23 @@ fn to_string_variants() {
 fn to_string_escape() {
     let c = Cell::from("Hello, \"World\"!");
     assert_eq!(c.value_string(), "Hello, \"World\"!");
+}
+
+#[test]
+fn color_rules_apply() {
+    use ratatui::style::Color;
+
+    let mut fmt = Formatting::default();
+    fmt.rules.push(FormatRule::GT(10., Style::default().fg(Color::Black)));
+    fmt.rules.push(FormatRule::LT(10., Style::default().fg(Color::Yellow)));
+    fmt.rules.push(FormatRule::EQ(10., Style::default().fg(Color::Green)));
+
+    let eval = fmt.eval_for_style(11.);
+    assert_eq!(eval.fg.unwrap(), Color::Black);
+
+    let eval = fmt.eval_for_style(9.);
+    assert_eq!(eval.fg.unwrap(), Color::Yellow);
+
+    let eval = fmt.eval_for_style(10.);
+    assert_eq!(eval.fg.unwrap(), Color::Green);
 }

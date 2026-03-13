@@ -22,7 +22,7 @@ use crate::app::{
         context::ExtractionContext,
         grid::{GRID_LEN, Grid, GridType, get_header_size},
     },
-    mode::{ALL_COLORS, EditingState, FormatEditorMode, Mode, RuleEditor, RulesViewer},
+    mode::{ALL_COLORS, EditBuffer, EditingState, FormatEditorMode, Mode, RuleEditor, RulesViewer},
     screen::ScreenSpace,
 };
 
@@ -186,6 +186,8 @@ impl Widget for &App {
                     // grid squares
                     (false, false) => {
                         match self.grid.get_cell_raw(x_idx, y_idx) {
+                            // Don't render blank cells
+                            None => should_render = false,
                             Some(cell) => {
                                 match self.grid.get_mode() {
                                     GridType::Values => {
@@ -203,12 +205,14 @@ impl Widget for &App {
                                                     match self.grid.evaluate(e) {
                                                         Ok(val) => {
                                                             display = val.to_string();
-                                                            style = Style::new()
-                                                                .fg(Color::White)
-                                                                // TODO This breaks dumb terminals like the windows
-                                                                // terminal
-                                                                .underline_color(Color::DarkGray)
-                                                                .add_modifier(Modifier::UNDERLINED);
+
+                                                            if let CellType::Number(solution) = val {
+                                                                style = cell
+                                                                    .formatting
+                                                                    .eval_for_style(solution)
+                                                                    .underline_color(Color::DarkGray)
+                                                                    .add_modifier(Modifier::UNDERLINED);
+                                                            }
                                                         }
                                                         Err(err) => {
                                                             // the formula is broken
@@ -254,8 +258,6 @@ impl Widget for &App {
                                 }
                                 // ===================================================
                             }
-                            // Don't render blank cells
-                            None => should_render = false,
                         }
 
                         if cells_of_interest.contains(&(x_idx, y_idx)) {
@@ -558,10 +560,16 @@ impl App {
                                     | EditingState::BG(_)
                                     | EditingState::Sign(_) => editor.editing = EditingState::Selecting(0),
                                 },
-                                event::KeyCode::Enter => match editor.editing {
+                                event::KeyCode::Enter => match &editor.editing {
                                     EditingState::Selecting(i) => match i {
                                         0 => editor.editing = EditingState::Sign(0),
-                                        1 => editor.editing = EditingState::Value(0),
+                                        1 => {
+                                            editor.editing = {
+                                                let mut edit = EditBuffer::new(' ');
+                                                edit.backspace();
+                                                EditingState::Value(edit)
+                                            }
+                                        }
                                         2 => editor.editing = EditingState::FG(0),
                                         3 => editor.editing = EditingState::BG(0),
                                         4 => {
@@ -571,7 +579,13 @@ impl App {
                                         5 => fmt.mode = FormatEditorMode::Viewer(RulesViewer::default()),
                                         _ => {}
                                     },
-                                    EditingState::Value(i) => todo!(),
+                                    EditingState::Value(edit) => {
+                                        if let Ok(float) = edit.as_string().parse::<f64>() {
+                                            editor.rule.set_threashold(float);
+
+                                            editor.editing = EditingState::Selecting(1);
+                                        }
+                                    }
                                     EditingState::Sign(i) => {
                                         // save threashold and style
                                         let t = editor.rule.get_threashold();
@@ -591,20 +605,22 @@ impl App {
                                         editor.editing = EditingState::Selecting(0)
                                     }
                                     EditingState::FG(i) => {
-                                        if let Some(color) = ALL_COLORS.get(i) {
+                                        if let Some(color) = ALL_COLORS.get(*i) {
                                             let s = editor.rule.get_style_mut();
                                             *s = s.fg(*color);
                                         } else {
-                                            todo!()
+                                            self.msg = StatusMessage::error("Selection for color is invalid (OOB?)")
                                         }
-                                        editor.editing = EditingState::Selecting(0)
+                                        editor.editing = EditingState::Selecting(2)
                                     }
                                     EditingState::BG(i) => {
-                                        if let Some(color) = ALL_COLORS.get(i) {
+                                        if let Some(color) = ALL_COLORS.get(*i) {
                                             let s = editor.rule.get_style_mut();
                                             *s = s.bg(*color);
+                                        } else {
+                                            self.msg = StatusMessage::error("Selection for color is invalid (OOB?)")
                                         }
-                                        editor.editing = EditingState::Selecting(0)
+                                        editor.editing = EditingState::Selecting(3)
                                     }
                                 },
                                 event::KeyCode::Char(char) => {
@@ -614,9 +630,10 @@ impl App {
                                             'k' => *i = i.saturating_sub(1),
                                             _ => {}
                                         },
-                                        EditingState::Value(_i) => {
-                                            char;
-                                            // TODO - editor
+                                        EditingState::Value(i) => {
+                                            if char.is_numeric() || char == '-' || char == '.' {
+                                                i.add_char(char);
+                                            }
                                         }
                                         EditingState::Sign(i) => match char {
                                             'j' => *i = min(*i + 1, 2),

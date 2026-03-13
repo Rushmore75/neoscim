@@ -1,4 +1,7 @@
-use crate::app::logic::{cell::{Cell, Formatting}, grid::{Grid, GridType}};
+use crate::app::logic::{
+    cell::{Cell, Formatting},
+    grid::{Grid, GridType},
+};
 
 #[cfg(test)]
 use crate::app::{
@@ -53,25 +56,24 @@ impl Clipboard {
                 for (y, cell) in row.iter().enumerate() {
                     let idx = (x + cx, y + cy);
 
-                    if translate {
-                        if let Some(cell) = cell {
-                            let trans = cell.translate_cell(self.source_cell, cursor);
-                            // FIXME need to merge in data
-                            match mode {
-                                GridType::Values => {
+                    match mode {
+                        GridType::Values => {
+                            if translate {
+                                if let Some(cell) = cell {
+                                    let trans = cell.translate_cell(self.source_cell, cursor);
                                     grid.merge_in_value(idx, trans.value)
-                                },
-                                GridType::Formatting => {
-                                    grid.merge_in_formatting(idx, trans.formatting)
-                                },
+                                }
+                            } else {
+                                // The cell at this location doesn't exist (empty)
+                                grid.merge_in_value::<String>(idx, None);
                             }
-                        } else {
-                            // The cell at this location doesn't exist (empty)
-                            grid.set_cell_raw::<Cell>(idx, None);
                         }
-                    } else {
-                        // translate = false
-                        grid.set_cell_raw::<Cell>(idx, cell.clone());
+                        GridType::Formatting => {
+                            grid.merge_in_formatting(
+                                idx,
+                                cell.as_ref().map(|f| f.formatting.clone()).unwrap_or_default(),
+                            );
+                        }
                     }
                 }
             }
@@ -124,11 +126,11 @@ impl Clipboard {
                 for y in low_y..=hi_y {
                     match mode {
                         GridType::Values => {
-                            grid.merge_in_value::<String>((x,y), None);
-                        },
+                            grid.merge_in_value::<String>((x, y), None);
+                        }
                         GridType::Formatting => {
-                            grid.merge_in_formatting((x,y), Formatting::default());
-                        },
+                            grid.merge_in_formatting((x, y), Formatting::default());
+                        }
                     }
                 }
             }

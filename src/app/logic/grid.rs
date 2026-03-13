@@ -397,7 +397,7 @@ impl Grid {
                                 rolling.to_string()
                             } else {
                                 #[cfg(debug_assertions)]
-                                unimplemented!("Invalid variable wanted to be translated");
+                                panic!("Invalid variable wanted to be translated");
 
                                 #[cfg(not(debug_assertions))]
                                 rolling.to_string()
@@ -441,7 +441,7 @@ impl Grid {
                                 rolling.replace(old, &new)
                             } else {
                                 #[cfg(debug_assertions)]
-                                unimplemented!("Invalid variable wanted to be translated");
+                                panic!("Invalid variable wanted to be translated");
 
                                 #[cfg(not(debug_assertions))]
                                 rolling.to_string()

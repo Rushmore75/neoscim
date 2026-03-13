@@ -591,7 +591,7 @@ pub struct RulesViewer {
 
 pub enum EditingState {
     Selecting(usize),
-    Value(usize),
+    Value(EditBuffer),
     Sign(usize),
     FG(usize),
     BG(usize),
@@ -634,7 +634,7 @@ impl Widget for &FormatEditor {
                 let line = Rect::new(inner.x, inner.y, inner.width, 1);
                 let display = self.cell.value_string();
                 let display = if display.is_empty() { "Empty".to_string() } else { display };
-                Paragraph::new(display).style(primary).render(line, buf);
+                Paragraph::new(display).style(secondary).render(line, buf);
 
                 let mut l_arrow = line.offset(Offset { x: -1, y: rules_viewer.index as i32 + 1 });
                 l_arrow.width = 1;
@@ -653,7 +653,7 @@ impl Widget for &FormatEditor {
                 Paragraph::new("'s' to save").centered().style(secondary).render(line, buf);
             }
             FormatEditorMode::Editor(rule_editor) => {
-                match rule_editor.editing {
+                match &rule_editor.editing {
                     EditingState::Selecting(index) => {
                         title = "Formatter";
                         let mut sign_color = primary;
@@ -739,9 +739,16 @@ impl Widget for &FormatEditor {
                         Paragraph::new("Yes").style(yes_color).render(sub[1], buf);
                         Paragraph::new("No").style(no_color).render(sub[2], buf);
                     }
-                    EditingState::Value(_index) => {
+                    EditingState::Value(edit) => {
                         title = "Value";
-                        inner;
+                        if edit.as_string().is_empty() {
+                            Paragraph::new("xxx")
+                        } else {
+                            Paragraph::new(edit.as_string())
+                        }
+                        .centered()
+                        .style(primary)
+                        .render(inner, buf);
                     }
                     EditingState::Sign(index) => {
                         title = "Choose Sign";
@@ -789,7 +796,7 @@ impl Widget for &FormatEditor {
                         title = "Select Color";
                         let mut area = Rect::new(inner.x, inner.y, inner.width, 1);
                         for (i, c) in ALL_COLORS.iter().enumerate() {
-                            let style = if i == index { primary_inverse } else { primary };
+                            let style = if i == *index { primary_inverse } else { primary };
                             Paragraph::new(c.to_string()).style(style).render(area, buf);
                             area = area.offset(Offset { x: 0, y: 1 });
                         }
