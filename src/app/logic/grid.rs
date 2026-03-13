@@ -1,14 +1,14 @@
 use std::{
     cmp::{max, min},
-    fs::{self, File},
+    fs,
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use evalexpr::*;
 
 use crate::app::logic::{
-    cell::{CSV_DELIMITER, Cell, CellType, FormatRule, Formatting},
+    cell::{Cell, CellType, FormatRule, Formatting},
     context::CallbackContext,
     grid::internal::CellGrid,
 };
@@ -311,7 +311,7 @@ impl Grid {
             data_csv.write_record(data_line)?;
             for (style, (x, y)) in style_line {
                 for rule in &style.rules {
-                    formatting_file.write(format!("({x},{y}){}\n", rule.serialize()).as_bytes())?;
+                    formatting_file.write_all(format!("({x},{y}){}\n", rule.serialize()).as_bytes())?;
                 }
             }
         }
@@ -355,81 +355,6 @@ impl Grid {
 
     pub fn needs_to_be_saved(&self) -> bool {
         self.dirty
-    }
-
-    fn parse_csv_line(line: &str) -> Vec<Option<String>> {
-        let mut iter = line.as_bytes().iter().map(|f| *f as char).peekable();
-        let mut cells = Vec::new();
-        let mut token = Vec::new();
-
-        let mut inside_quotes = false;
-        let mut is_escaped = false;
-
-        while let Some(c) = iter.next() {
-            // we just finished
-            if c == CSV_DELIMITER && !inside_quotes {
-                if !token.is_empty() {
-                    cells.push(Some(token.iter().collect::<String>()));
-                } else {
-                    cells.push(None);
-                }
-                token.clear();
-                continue;
-            }
-            // start reading an escaped cell
-            if c == '"' {
-                if inside_quotes {
-                    // we might be escaping a quote
-                    if let Some(next) = iter.peek() {
-                        // check if the next cell is a quote, if it is, that's because it's being escaped by the current quote
-                        // only escape the next char if this char isn't escaped it's self
-                        if *next == '"' && !is_escaped {
-                            // don't save the escape char
-                            is_escaped = true;
-                            continue;
-                        } else if is_escaped {
-                            is_escaped = false;
-                        } else {
-                            // escaped cell over
-                            inside_quotes = false;
-                            continue;
-                        }
-                    } else {
-                        if is_escaped {
-                            is_escaped = false;
-                        } else {
-                            continue;
-                        }
-                    }
-                } else {
-                    // not inside quotes, must be escaping another one
-                    if let Some(next) = iter.peek() {
-                        if *next == '"' && !is_escaped {
-                            // the current char is " and the next char is "
-                            // forget this one and mark to save the next
-                            is_escaped = true;
-                            continue;
-                        } else if is_escaped {
-                            is_escaped = false;
-                        } else {
-                            inside_quotes = true;
-                            continue;
-                        }
-                    } else {
-                        // not inside quotes, EOL
-
-                        if is_escaped {
-                            is_escaped = false;
-                        }
-                    }
-                }
-            }
-            token.push(c)
-        }
-        if !token.is_empty() {
-            cells.push(Some(token.iter().collect::<String>()));
-        }
-        cells
     }
 
     pub fn cursor(&self) -> (usize, usize) {
@@ -718,11 +643,11 @@ fn saving_csv() {
     let cell = app.grid.get_cell_raw(0, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.value_string()).expect("Should evaluate");
     assert_eq!(res, CellType::Number(11.0));
-    assert_eq!(cell.escaped_csv_string(), "=A9+A$0");
+    assert_eq!(cell.value_string(), "=A9+A$0");
     let cell = app.grid.get_cell_raw(1, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.value_string()).expect("Should evaluate");
     assert_eq!(res, CellType::Number(121.0));
-    assert_eq!(cell.escaped_csv_string(), "=A10^2");
+    assert_eq!(cell.value_string(), "=A10^2");
 
     // set saving the file
     let filename = "/tmp/file.csv";
@@ -761,11 +686,11 @@ fn saving_neoscim() {
     let cell = app.grid.get_cell_raw(0, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.value_string()).expect("Should evaluate");
     assert_eq!(res, CellType::Number(11.0));
-    assert_eq!(cell.escaped_csv_string(), "=A9+A$0");
+    assert_eq!(cell.value_string(), "=A9+A$0");
     let cell = app.grid.get_cell_raw(1, 10).as_ref().expect("Should've been set");
     let res = app.grid.evaluate(&cell.value_string()).expect("Should evaluate");
     assert_eq!(res, CellType::Number(121.0));
-    assert_eq!(cell.escaped_csv_string(), "=A10^2");
+    assert_eq!(cell.value_string(), "=A10^2");
 
     // set saving the file
     let filename = format!("/tmp/file.{CUSTOM_EXT}");
@@ -1021,57 +946,6 @@ fn xlookup_function() {
     let res = grid.evaluate(&cell.value_string());
     assert!(res.is_ok());
     assert_eq!(res.unwrap(), CellType::Number(31.));
-}
-
-#[test]
-fn parse_csv() {
-    //standard parsing
-    assert_eq!(
-        Grid::parse_csv_line("1,2,3"),
-        vec![Some("1".to_string()), Some("2".to_string()), Some("3".to_string())]
-    );
-
-    // comma in a cell
-    assert_eq!(
-        Grid::parse_csv_line("1,\",\",3"),
-        vec![Some("1".to_string()), Some(",".to_string()), Some("3".to_string())]
-    );
-
-    // quotes in a cell
-    assert_eq!(
-        Grid::parse_csv_line("1,she said \"\"wow\"\",3"),
-        vec![Some("1".to_string()), Some("she said \"wow\"".to_string()), Some("3".to_string())]
-    );
-
-    // quotes and comma in cell
-    assert_eq!(
-        Grid::parse_csv_line("1,\"she said \"\"hello, world\"\"\",3"),
-        vec![Some("1".to_string()), Some("she said \"hello, world\"".to_string()), Some("3".to_string())]
-    );
-
-    // ending with a quote
-    assert_eq!(
-        Grid::parse_csv_line("1,she said \"\"hello world\"\""),
-        vec![Some("1".to_string()), Some("she said \"hello world\"".to_string())]
-    );
-
-    // ending with a quote with a comma
-    assert_eq!(
-        Grid::parse_csv_line("1,\"she said \"\"hello, world\"\"\""),
-        vec![Some("1".to_string()), Some("she said \"hello, world\"".to_string())]
-    );
-
-    // starting with a quote
-    assert_eq!(
-        Grid::parse_csv_line("\"\"hello world\"\" is what she said,1"),
-        vec![Some("\"hello world\" is what she said".to_string()), Some("1".to_string())]
-    );
-
-    // starting with a quote with a comma
-    assert_eq!(
-        Grid::parse_csv_line("\"\"\"hello, world\"\" is what she said\",1"),
-        vec![Some("\"hello, world\" is what she said".to_string()), Some("1".to_string())]
-    );
 }
 
 #[test]

@@ -2,7 +2,6 @@ use std::fmt::Display;
 use std::fmt::Write;
 
 use evalexpr::eval_with_context;
-use ratatui::style::Color;
 use ratatui::{
     layout::{Constraint, Layout},
     style::Style,
@@ -139,9 +138,9 @@ where
 
     pub fn get_style(&self) -> Style {
         match self {
-            FormatRule::GT(_, style) => style.clone(),
-            FormatRule::LT(_, style) => style.clone(),
-            FormatRule::EQ(_, style) => style.clone(),
+            FormatRule::GT(_, style) => *style,
+            FormatRule::LT(_, style) => *style,
+            FormatRule::EQ(_, style) => *style,
         }
     }
 
@@ -184,16 +183,10 @@ impl Formatting {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Cell {
     pub value: Option<CellType>,
     pub formatting: Formatting,
-}
-
-impl Default for Cell {
-    fn default() -> Self {
-        Self { value: None, formatting: Formatting::default() }
-    }
 }
 
 impl Cell {
@@ -211,13 +204,6 @@ impl Cell {
         String::new()
     }
 
-    #[deprecated]
-    pub fn escaped_csv_string(&self) -> String {
-        if let Some(v) = &self.value {
-            return v.escaped_csv_string();
-        }
-        String::new()
-    }
     /// `replace_fn` takes the string, the old value, and then the new value.
     /// It can be thought of as `echo $1 | sed s/$2/$3/g`
     pub fn custom_translate_cell(
@@ -373,24 +359,7 @@ where
     }
 }
 
-pub const CSV_DELIMITER: char = ',';
-const CSV_ESCAPE: char = '"';
-
 impl CellType {
-    #[deprecated]
-    pub fn escaped_csv_string(&self) -> String {
-        let mut display = self.to_string();
-
-        // escape quotes " -> ""
-        let needs_escaping = display.char_indices().filter(|f| f.1 == '"').map(|f| f.0).collect::<Vec<usize>>();
-        for idx in needs_escaping.iter().rev() {
-            display.insert(*idx, '\\');
-        }
-
-        // escape string of it has a comma
-        if display.contains(CSV_DELIMITER) { format!("\"{display}\"") } else { display }
-    }
-
     fn duck_type(value: impl Into<String>) -> Self {
         let value = value.into();
 

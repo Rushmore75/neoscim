@@ -11,7 +11,7 @@ use crate::app::{
     app::App,
     error_msg::StatusMessage,
     logic::{
-        cell::{Cell, FormatRule, Formatting},
+        cell::{Cell, FormatRule},
         grid::{GRID_LEN, Grid},
     },
 };
@@ -584,14 +584,9 @@ pub enum FormatEditorMode {
     Editor(RuleEditor),
 }
 
+#[derive(Default)]
 pub struct RulesViewer {
     pub index: u16,
-}
-
-impl Default for RulesViewer {
-    fn default() -> Self {
-        Self { index: 0 }
-    }
 }
 
 pub enum EditingState {
@@ -623,7 +618,7 @@ impl Widget for &FormatEditor {
         let primary = Style::new().fg(Color::White).bg(Color::Black);
         let primary_inverse = Style::default().fg(Color::Black).bg(Color::White);
 
-        let mut title;
+        let title;
         let block = Block::default()
             .border_type(ratatui::widgets::BorderType::Rounded)
             .borders(Borders::all())
@@ -641,7 +636,7 @@ impl Widget for &FormatEditor {
                 let display = if display.is_empty() { "Empty".to_string() } else { display };
                 Paragraph::new(display).style(primary).render(line, buf);
 
-                let mut l_arrow = line.offset(Offset { x: -1, y: rules_viewer.index as i32 + 1 }).clone();
+                let mut l_arrow = line.offset(Offset { x: -1, y: rules_viewer.index as i32 + 1 });
                 l_arrow.width = 1;
                 let r_arrow = l_arrow.offset(Offset { x: area.width as i32 - 1, y: 0 });
                 Paragraph::new("→").style(primary).render(l_arrow, buf);
@@ -744,7 +739,7 @@ impl Widget for &FormatEditor {
                         Paragraph::new("Yes").style(yes_color).render(sub[1], buf);
                         Paragraph::new("No").style(no_color).render(sub[2], buf);
                     }
-                    EditingState::Value(index) => {
+                    EditingState::Value(_index) => {
                         title = "Value";
                         inner;
                     }
@@ -795,7 +790,7 @@ impl Widget for &FormatEditor {
                         let mut area = Rect::new(inner.x, inner.y, inner.width, 1);
                         for (i, c) in ALL_COLORS.iter().enumerate() {
                             let style = if i == index { primary_inverse } else { primary };
-                            Paragraph::new(format!("{}", c.to_string())).style(style).render(area, buf);
+                            Paragraph::new(c.to_string()).style(style).render(area, buf);
                             area = area.offset(Offset { x: 0, y: 1 });
                         }
                     }
@@ -803,7 +798,7 @@ impl Widget for &FormatEditor {
             }
         }
 
-        let line = Rect::new(inner.x, inner.y - 1, (title.len() as u16), 1);
+        let line = Rect::new(inner.x, inner.y - 1, title.len() as u16, 1);
         Paragraph::new(title).centered().style(primary).render(line, buf);
     }
 }

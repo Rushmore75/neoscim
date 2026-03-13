@@ -1,26 +1,24 @@
 use std::{
     cmp::{max, min},
     collections::HashMap,
-    fs, io,
+    io,
     path::{Path, PathBuf},
-    time::SystemTime,
 };
 
 use ratatui::{
     DefaultTerminal, Frame,
-    backend::ClearType,
-    crossterm::{event, terminal::Clear},
-    layout::{self, Constraint, Layout, Margin, Rect},
+    crossterm::event,
+    layout::{self, Constraint, Layout, Rect},
     prelude,
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Paragraph, Widget},
 };
 
 use crate::app::{
     clipboard::Clipboard,
     error_msg::StatusMessage,
     logic::{
-        cell::{Cell, CellType, FormatRule, Formatting},
+        cell::{Cell, CellType, FormatRule},
         context::ExtractionContext,
         grid::{GRID_LEN, Grid, GridType, get_header_size},
     },
@@ -202,7 +200,7 @@ impl Widget for &App {
                                                     style = Style::new().fg(Color::LightMagenta)
                                                 }
                                                 CellType::Equation(e) => {
-                                                    match self.grid.evaluate(&e) {
+                                                    match self.grid.evaluate(e) {
                                                         Ok(val) => {
                                                             display = val.to_string();
                                                             style = Style::new()
@@ -289,7 +287,7 @@ impl Widget for &App {
                     // Adjust for the fact that the first column
                     // is smaller, since it is just headers
                     if x > 0 {
-                        x_off = x_off - (cell_width - row_header_width);
+                        x_off -= cell_width - row_header_width;
                     }
 
                     // If this is the row header column
@@ -616,7 +614,7 @@ impl App {
                                             'k' => *i = i.saturating_sub(1),
                                             _ => {}
                                         },
-                                        EditingState::Value(i) => {
+                                        EditingState::Value(_i) => {
                                             char;
                                             // TODO - editor
                                         }
