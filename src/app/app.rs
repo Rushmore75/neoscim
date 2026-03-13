@@ -1,9 +1,8 @@
 use std::{
     cmp::{max, min},
     collections::HashMap,
-    fs, io,
-    path::PathBuf,
-    time::SystemTime,
+    io,
+    path::{Path, PathBuf},
 };
 
 use ratatui::{
@@ -19,10 +18,11 @@ use crate::app::{
     clipboard::Clipboard,
     error_msg::StatusMessage,
     logic::{
-        calc::{Grid, LEN, get_header_size},
-        cell::CellType,
+        cell::{Cell, CellType, FormatRule},
+        context::ExtractionContext,
+        grid::{GRID_LEN, Grid, GridType, get_header_size},
     },
-    mode::Mode,
+    mode::{ALL_COLORS, EditBuffer, EditingState, FormatEditorMode, Mode, RuleEditor, RulesViewer},
     screen::ScreenSpace,
 };
 
@@ -31,7 +31,6 @@ pub struct App {
     pub grid: Grid,
     pub mode: Mode,
     pub file: Option<PathBuf>,
-    file_modified_date: SystemTime,
     pub msg: StatusMessage,
     pub vars: HashMap<String, String>,
     pub screen: ScreenSpace,
@@ -67,31 +66,36 @@ impl Widget for &App {
 
         // cells that are related by reference to the cursor's cell
         // (inputs to formulas and such)
+        // (for highlighting references)
         let cells_of_interest: Vec<(usize, usize)> = {
-            let ctx = crate::app::logic::ctx::ExtractionContext::new();
+            let ctx = ExtractionContext::new();
             let (x, y) = self.grid.cursor();
             if let Some(cell) = self.grid.get_cell_raw(x, y) {
-                if let CellType::Equation(eq) = cell {
-                    let _ = evalexpr::eval_with_context(&eq[1..], &ctx);
-                    let vars = ctx.dump_vars();
+                if let Some(v) = &cell.value {
+                    if let CellType::Equation(eq) = v {
+                        let _ = evalexpr::eval_with_context(&eq[1..], &ctx);
+                        let vars = ctx.dump_vars();
 
-                    let mut interest = Vec::new();
-                    for var in vars {
-                        if let Some(a) = Grid::parse_to_idx(&var) {
-                            interest.push(a);
-                        } else if let Some((start, end)) = Grid::range_as_indices(&var) {
-                            // insert coords:
-                            // (start, 0..len)
-                            // ..
-                            // (end, 0..len)
-                            for x in start..=end {
-                                for y in 0..=super::logic::calc::LEN {
-                                    interest.push((x,y))
+                        let mut interest = Vec::new();
+                        for var in vars {
+                            if let Some(a) = Grid::parse_to_idx(&var) {
+                                interest.push(a);
+                            } else if let Some((start, end)) = Grid::range_as_indices(&var) {
+                                // insert coords:
+                                // (start, 0..len)
+                                // ..
+                                // (end, 0..len)
+                                for x in start..=end {
+                                    for y in 0..=GRID_LEN {
+                                        interest.push((x, y))
+                                    }
                                 }
                             }
                         }
+                        interest
+                    } else {
+                        Vec::new()
                     }
-                    interest
                 } else {
                     Vec::new()
                 }
@@ -106,6 +110,11 @@ impl Widget for &App {
         // compile time. Thus cannot be static.
         let cell_width = self.screen.get_cell_width(&self.vars) as u16;
         let cell_height = self.screen.get_cell_height(&self.vars) as u16;
+
+        let (header_dark, header_light) = match self.grid.get_mode() {
+            GridType::Values => (Color::Rgb(200, 160, 0), Color::Rgb(180, 130, 0)),
+            GridType::Formatting => (Color::Rgb(0, 160, 200), Color::Rgb(0, 130, 180)),
+        };
 
         for x in 0..x_max {
             for y in 0..y_max {
@@ -125,12 +134,9 @@ impl Widget for &App {
                 }
 
                 // don't render non-accessible cells
-                if x_idx > LEN-1 {
+                if x_idx > GRID_LEN - 1 {
                     continue;
                 }
-
-                const ORANGE1: Color = Color::Rgb(200, 160, 0);
-                const ORANGE2: Color = Color::Rgb(180, 130, 0);
 
                 let mut should_render = true;
                 let mut suggest_upper_bound = None;
@@ -157,9 +163,9 @@ impl Widget for &App {
                         let bg = if y_idx == self.grid.cursor().1 {
                             Color::DarkGray
                         } else if y_idx.is_multiple_of(2) {
-                            ORANGE1
+                            header_dark
                         } else {
-                            ORANGE2
+                            header_light
                         };
                         style = Style::new().fg(Color::White).bg(bg);
                     }
@@ -170,9 +176,9 @@ impl Widget for &App {
                         let bg = if x_idx == self.grid.cursor().0 {
                             Color::DarkGray
                         } else if x_idx.is_multiple_of(2) {
-                            ORANGE1
+                            header_dark
                         } else {
-                            ORANGE2
+                            header_light
                         };
 
                         style = Style::new().fg(Color::White).bg(bg)
@@ -180,36 +186,58 @@ impl Widget for &App {
                     // grid squares
                     (false, false) => {
                         match self.grid.get_cell_raw(x_idx, y_idx) {
+                            // Don't render blank cells
+                            None => should_render = false,
                             Some(cell) => {
-                                // Render in different colors based on type of contents
-                                match cell {
-                                    CellType::Number(c) => display = c.to_string(),
-                                    CellType::String(s) => {
-                                        display = s.to_owned();
-                                        style = Style::new().fg(Color::LightMagenta)
-                                    }
-                                    CellType::Equation(e) => {
-                                        match self.grid.evaluate(e) {
-                                            Ok(val) => {
-                                                display = val.to_string();
-                                                style = Style::new()
-                                                    .fg(Color::White)
-                                                    // TODO This breaks dumb terminals like the windows
-                                                    // terminal
-                                                    .underline_color(Color::DarkGray)
-                                                    .add_modifier(Modifier::UNDERLINED);
-                                            }
-                                            Err(err) => {
-                                                // the formula is broken
-                                                display = err.to_owned();
-                                                style = Style::new()
-                                                    .fg(Color::Red)
-                                                    .underline_color(Color::Red)
-                                                    .add_modifier(Modifier::UNDERLINED)
+                                match self.grid.get_mode() {
+                                    GridType::Values => {
+                                        if let Some(v) = &cell.value {
+                                            match v {
+                                                CellType::Number(c) => {
+                                                    display = c.to_string();
+                                                    style = cell.formatting.eval_for_style(*c);
+                                                }
+                                                CellType::String(s) => {
+                                                    display = s.to_owned();
+                                                    style = Style::new().fg(Color::LightMagenta)
+                                                }
+                                                CellType::Equation(e) => {
+                                                    match self.grid.evaluate(e) {
+                                                        Ok(val) => {
+                                                            display = val.to_string();
+
+                                                            if let CellType::Number(solution) = val {
+                                                                style = cell
+                                                                    .formatting
+                                                                    .eval_for_style(solution)
+                                                                    .underline_color(Color::DarkGray)
+                                                                    .add_modifier(Modifier::UNDERLINED);
+                                                            }
+                                                        }
+                                                        Err(err) => {
+                                                            // the formula is broken
+                                                            display = err.to_owned();
+                                                            style = Style::new()
+                                                                .fg(Color::Red)
+                                                                .underline_color(Color::Red)
+                                                                .add_modifier(Modifier::UNDERLINED)
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
+                                    GridType::Formatting => {
+                                        if cell.formatting.rules.is_empty() {
+                                            display = cell.value_string();
+                                            style = Style::new().bg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+                                        } else {
+                                            display = cell.format_string();
+                                        }
+                                    }
                                 }
+
+                                // Render in different colors based on type of contents
 
                                 // ===================================================
                                 // Allow for text in one cell to visually overflow into empty cells
@@ -230,8 +258,6 @@ impl Widget for &App {
                                 }
                                 // ===================================================
                             }
-                            // Don't render blank cells
-                            None => should_render = false,
                         }
 
                         if cells_of_interest.contains(&(x_idx, y_idx)) {
@@ -263,7 +289,7 @@ impl Widget for &App {
                     // Adjust for the fact that the first column
                     // is smaller, since it is just headers
                     if x > 0 {
-                        x_off = x_off - (cell_width - row_header_width);
+                        x_off -= cell_width - row_header_width;
                     }
 
                     // If this is the row header column
@@ -303,24 +329,17 @@ impl App {
             screen: ScreenSpace::new(),
             marks: HashMap::new(),
             clipboard: Clipboard::new(),
-            file_modified_date: SystemTime::now(),
         }
     }
 
-    pub fn new_with_file(file: impl Into<PathBuf> + Clone) -> std::io::Result<Self> {
+    pub fn new_with_file<P>(file: P) -> std::io::Result<Self>
+    where
+        P: AsRef<Path> + Clone,
+        PathBuf: From<P>,
+    {
         let mut app = Self::new();
-        app.file = Some(file.clone().into());
-
-        let mut file = fs::OpenOptions::new().read(true).open(file.into())?;
-        let metadata = file.metadata()?;
-        // Not all systems support this, apparently.
-        if let Ok(time) = metadata.modified() {
-            app.file_modified_date = time;
-        } else {
-            // Default is to just assume it was modified when we opened it.
-        }
-
-        app.grid = Grid::new_from_file(&mut file)?;
+        app.grid = Grid::new_from_file(file.clone())?;
+        app.file = Some(file.into());
         Ok(app)
     }
 
@@ -348,10 +367,32 @@ impl App {
         format!("{file_name}{icon}")
     }
 
+    pub fn chars_to_display(&self, cell: &Option<Cell>) -> u16 {
+        let min = 20;
+        match self.grid.get_mode() {
+            GridType::Values => {
+                let len = match &self.mode {
+                    Mode::Insert(edit) | Mode::VisualCmd(_, edit) | Mode::Command(edit) | Mode::Chord(edit) => {
+                        edit.len()
+                    }
+                    Mode::Normal => cell.as_ref().map(|f| f.value_string().len()).unwrap_or_default(),
+                    Mode::Visual(_) | Mode::Formatting(_) => 0,
+                };
+                // min 20 chars, expand if needed
+                max(len as u16 + 1, min)
+            }
+            GridType::Formatting => {
+                let x = cell.as_ref().map(|f| f.format_string().len()).unwrap_or_default();
+                max(x as u16 + 1, min)
+            }
+        }
+    }
+
     fn draw(&self, frame: &mut Frame) {
         let (x, y) = self.grid.cursor();
-        let current_cell = self.grid.get_cell_raw(x, y);
-        let len = self.mode.chars_to_display(current_cell);
+        let current_cell_string = self.grid.get_cell_display(x, y);
+        let len = max(current_cell_string.len() as u16, 20);
+
         let file_name_status = self.file_name_display();
 
         // layout
@@ -381,8 +422,6 @@ impl App {
         let cmd_line_debug = cmd_line_split[3];
         // ======================================================
 
-        self.mode.render(frame, cmd_line_left, current_cell);
-
         frame.render_widget(self, body);
         frame.render_widget(&self.msg, cmd_line_right);
         frame.render_widget(Paragraph::new(file_name_status), cmd_line_status);
@@ -401,6 +440,8 @@ impl App {
             )),
             cmd_line_debug,
         );
+
+        self.mode.render(frame, cmd_line_left, current_cell_string.clone());
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -444,16 +485,10 @@ impl App {
 
                         let cursor = self.grid.cursor();
                         self.grid.transact_on_grid(|grid| {
-                            // try to insert as a float
-                            if let Ok(v) = v.parse::<f64>() {
-                                grid.set_cell_raw(cursor, Some(v));
+                            if !v.is_empty() {
+                                grid.merge_in_value(cursor, Some(v.to_owned()));
                             } else {
-                                // if you can't, then insert as a string
-                                if !v.is_empty() {
-                                    grid.set_cell_raw(cursor, Some(v.to_owned()));
-                                } else {
-                                    grid.set_cell_raw::<CellType>(cursor, None);
-                                }
+                                grid.merge_in_value::<String>(cursor, None);
                             }
                         });
 
@@ -469,6 +504,155 @@ impl App {
                 },
                 _ => {}
             },
+            Mode::Formatting(fmt) => {
+                match &mut fmt.mode {
+                    FormatEditorMode::Viewer(v) => {
+                        if let event::Event::Key(key) = event::read()? {
+                            match key.code {
+                                event::KeyCode::Enter => {
+                                    let rules = &mut fmt.cell.formatting.rules;
+                                    if (v.index as usize) < rules.len() {
+                                        fmt.mode = FormatEditorMode::Editor(RuleEditor::new(
+                                            rules[v.index as usize].clone(),
+                                            v.index.into(),
+                                        ))
+                                    }
+                                }
+                                event::KeyCode::Esc => {
+                                    // just cancel the operation
+                                    self.mode = Mode::Normal;
+                                }
+                                event::KeyCode::Char(char) => {
+                                    match char {
+                                        // TODO need to do proper array indexing
+                                        'O' => {}
+                                        'o' => fmt.cell.formatting.rules.push(FormatRule::EQ(0., Style::default())),
+                                        'j' => {
+                                            v.index = min(
+                                                v.index + 1,
+                                                fmt.cell.formatting.rules.len().saturating_sub(1) as u16,
+                                            )
+                                        }
+                                        'k' => v.index = v.index.saturating_sub(1),
+                                        's' => {
+                                            let c = self.grid.cursor();
+                                            self.grid.transact_on_grid(|grid| {
+                                                grid.merge_in_formatting(c, fmt.cell.formatting.clone());
+                                            });
+                                            self.mode = Mode::Normal;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    FormatEditorMode::Editor(editor) => {
+                        if let event::Event::Key(key) = event::read()? {
+                            match key.code {
+                                event::KeyCode::Esc => match editor.editing {
+                                    EditingState::Selecting(_) => {
+                                        fmt.mode = FormatEditorMode::Viewer(RulesViewer::default())
+                                    }
+                                    EditingState::Value(_)
+                                    | EditingState::FG(_)
+                                    | EditingState::BG(_)
+                                    | EditingState::Sign(_) => editor.editing = EditingState::Selecting(0),
+                                },
+                                event::KeyCode::Enter => match &editor.editing {
+                                    EditingState::Selecting(i) => match i {
+                                        0 => editor.editing = EditingState::Sign(0),
+                                        1 => {
+                                            editor.editing = {
+                                                let mut edit = EditBuffer::new(' ');
+                                                edit.backspace();
+                                                EditingState::Value(edit)
+                                            }
+                                        }
+                                        2 => editor.editing = EditingState::FG(0),
+                                        3 => editor.editing = EditingState::BG(0),
+                                        4 => {
+                                            fmt.cell.formatting.rules[editor.cell_rule_index] = editor.rule.clone();
+                                            fmt.mode = FormatEditorMode::Viewer(RulesViewer::default())
+                                        }
+                                        5 => fmt.mode = FormatEditorMode::Viewer(RulesViewer::default()),
+                                        _ => {}
+                                    },
+                                    EditingState::Value(edit) => {
+                                        if let Ok(float) = edit.as_string().parse::<f64>() {
+                                            editor.rule.set_threashold(float);
+
+                                            editor.editing = EditingState::Selecting(1);
+                                        }
+                                    }
+                                    EditingState::Sign(i) => {
+                                        // save threashold and style
+                                        let t = editor.rule.get_threashold();
+                                        let s = editor.rule.get_style();
+                                        match i {
+                                            0 => {
+                                                editor.rule = FormatRule::EQ(t, s);
+                                            }
+                                            1 => {
+                                                editor.rule = FormatRule::GT(t, s);
+                                            }
+                                            2 => {
+                                                editor.rule = FormatRule::LT(t, s);
+                                            }
+                                            _ => {}
+                                        }
+                                        editor.editing = EditingState::Selecting(0)
+                                    }
+                                    EditingState::FG(i) => {
+                                        if let Some(color) = ALL_COLORS.get(*i) {
+                                            let s = editor.rule.get_style_mut();
+                                            *s = s.fg(*color);
+                                        } else {
+                                            self.msg = StatusMessage::error("Selection for color is invalid (OOB?)")
+                                        }
+                                        editor.editing = EditingState::Selecting(2)
+                                    }
+                                    EditingState::BG(i) => {
+                                        if let Some(color) = ALL_COLORS.get(*i) {
+                                            let s = editor.rule.get_style_mut();
+                                            *s = s.bg(*color);
+                                        } else {
+                                            self.msg = StatusMessage::error("Selection for color is invalid (OOB?)")
+                                        }
+                                        editor.editing = EditingState::Selecting(3)
+                                    }
+                                },
+                                event::KeyCode::Char(char) => {
+                                    match &mut editor.editing {
+                                        EditingState::Selecting(i) => match char {
+                                            'j' => *i = min(*i + 1, 5),
+                                            'k' => *i = i.saturating_sub(1),
+                                            _ => {}
+                                        },
+                                        EditingState::Value(i) => {
+                                            if char.is_numeric() || char == '-' || char == '.' {
+                                                i.add_char(char);
+                                            }
+                                        }
+                                        EditingState::Sign(i) => match char {
+                                            'j' => *i = min(*i + 1, 2),
+                                            'k' => *i = i.saturating_sub(1),
+                                            _ => {}
+                                        },
+                                        EditingState::FG(i) | EditingState::BG(i) => match char {
+                                            'j' => *i = min(*i + 1, ALL_COLORS.len() - 1),
+                                            'k' => *i = i.saturating_sub(1),
+                                            _ => {}
+                                        },
+                                    };
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                };
+            }
             Mode::Normal => match event::read()? {
                 event::Event::Key(key_event) => match key_event.code {
                     event::KeyCode::F(_n) => {}
@@ -532,7 +716,7 @@ fn test_quit_cmd() {
     let mut app = App::new();
     assert!(!app.exit);
 
-    app.mode = Mode::Command(crate::app::mode::Chord::from(":q".to_string()));
+    app.mode = Mode::Command(crate::app::mode::EditBuffer::from(":q".to_string()));
     Mode::process_cmd(&mut app);
 
     assert!(app.exit);

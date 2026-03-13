@@ -1,14 +1,17 @@
-use crate::app::logic::{calc::Grid, cell::CellType};
+use crate::app::logic::{
+    cell::{Cell, Formatting},
+    grid::{Grid, GridType},
+};
 
 #[cfg(test)]
 use crate::app::{
     app::App,
-    mode::{Chord, Mode},
+    mode::{EditBuffer, Mode},
 };
 
 pub struct Clipboard {
     // could this just be a grid?
-    clipboard: Vec<Vec<Option<CellType>>>,
+    clipboard: Vec<Vec<Option<Cell>>>,
     /// For calculating variable translation
     source_cell: (usize, usize),
     /// For tracking momentum direction
@@ -44,6 +47,8 @@ impl Clipboard {
         // cursor
         let (cx, cy) = into.cursor();
 
+        let mode = into.get_mode();
+
         let cursor = into.cursor();
         into.transact_on_grid(|grid| {
             // iterate thru the clipbaord's cells
@@ -51,17 +56,24 @@ impl Clipboard {
                 for (y, cell) in row.iter().enumerate() {
                     let idx = (x + cx, y + cy);
 
-                    if translate {
-                        if let Some(cell) = cell {
-                            let trans = cell.translate_cell(self.source_cell, cursor);
-                            grid.set_cell_raw(idx, Some(trans));
-                        } else {
-                            // The cell at this location doesn't exist (empty)
-                            grid.set_cell_raw::<CellType>(idx, None);
+                    match mode {
+                        GridType::Values => {
+                            if translate {
+                                if let Some(cell) = cell {
+                                    let trans = cell.translate_cell(self.source_cell, cursor);
+                                    grid.merge_in_value(idx, trans.value)
+                                }
+                            } else {
+                                // The cell at this location doesn't exist (empty)
+                                grid.merge_in_value::<String>(idx, None);
+                            }
                         }
-                    } else {
-                        // translate = false
-                        grid.set_cell_raw::<CellType>(idx, cell.clone());
+                        GridType::Formatting => {
+                            grid.merge_in_formatting(
+                                idx,
+                                cell.as_ref().map(|f| f.formatting.clone()).unwrap_or_default(),
+                            );
+                        }
                     }
                 }
             }
@@ -105,22 +117,24 @@ impl Clipboard {
         let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
         let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
 
-        // size the clipboard appropriately
-        self.clipboard.clear();
+        self.clipboard_copy(start, end, from);
+        let mode = from.get_mode();
 
         from.transact_on_grid(|grid| {
             // clone data into clipboard
             for x in low_x..=hi_x {
-                let mut col = Vec::new();
                 for y in low_y..=hi_y {
-                    let a = grid.get_cell_raw(x, y);
-                    col.push(a.clone());
-                    grid.set_cell_raw::<CellType>((x, y), None);
+                    match mode {
+                        GridType::Values => {
+                            grid.merge_in_value::<String>((x, y), None);
+                        }
+                        GridType::Formatting => {
+                            grid.merge_in_formatting((x, y), Formatting::default());
+                        }
+                    }
                 }
-                self.clipboard.push(col);
             }
         });
-        self.last_paste_cell = (low_x, low_y);
     }
 }
 
@@ -131,18 +145,41 @@ fn copy_paste() {
     app.grid.set_cell("A0", "hello".to_string());
     app.grid.mv_cursor_to(0, 0);
 
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
     // yy will have set mode back to normal at this point
 
     assert_eq!(app.clipboard.clipboard.len(), 1);
-    assert!(app.clipboard.clipboard[0][0].as_ref().is_some_and(|c| c.to_string() == "hello"));
+    assert!(app.clipboard.clipboard[0][0].as_ref().is_some_and(|c| c.value_string() == "hello"));
 
     app.grid.mv_cursor_to(1, 1);
     Mode::process_key(&mut app, 'p');
 
     let a = app.grid.get_cell("B1").as_ref().expect("Should've been set by paste");
-    assert_eq!(a.to_string(), "hello");
+    assert_eq!(a.value_string(), "hello");
+}
+
+#[test]
+fn cut() {
+    let mut app = App::new();
+
+    app.grid.set_cell("A0", "hello".to_string());
+    app.grid.mv_cursor_to(0, 0);
+
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('d'));
+    Mode::process_key(&mut app, ' ');
+
+    assert_eq!(app.clipboard.clipboard.len(), 1);
+    assert!(app.clipboard.clipboard[0][0].as_ref().is_some_and(|c| c.value_string() == "hello"));
+
+    app.grid.mv_cursor_to(1, 1);
+    Mode::process_key(&mut app, 'p');
+
+    let a = app.grid.get_cell("B1").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.value_string(), "hello");
+
+    let a = app.grid.get_cell("A0").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.value_string(), "");
 }
 
 #[test]
@@ -152,7 +189,7 @@ fn momentum_y_pos() {
     app.grid.set_cell("A0", "hello".to_string());
     app.grid.mv_cursor_to(0, 0);
 
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
     // yy will have set mode back to normal at this point
 
@@ -169,7 +206,7 @@ fn momentum_y_neg() {
     app.grid.set_cell("A1", "hello".to_string());
     app.grid.mv_cursor_to(0, 1);
 
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
     // yy will have set mode back to normal at this point
 
@@ -186,7 +223,7 @@ fn momentum_x_pos() {
     app.grid.set_cell("A0", "hello".to_string());
     app.grid.mv_cursor_to(0, 0);
 
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
     // yy will have set mode back to normal at this point
 
@@ -203,7 +240,7 @@ fn momentum_x_neg() {
     app.grid.set_cell("B0", "hello".to_string());
     app.grid.mv_cursor_to(1, 0);
 
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
     // yy will have set mode back to normal at this point
 
@@ -220,7 +257,7 @@ fn diagonal_momentum() {
     app.grid.set_cell("A1", "hello".to_string());
     app.grid.mv_cursor_to(0, 1);
 
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
     // yy will have set mode back to normal at this point
 
@@ -247,22 +284,22 @@ fn copy_paste_vars_translate() {
 
     // Copy A0
     app.grid.mv_cursor_to(0, 0);
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
 
-    assert!(app.clipboard.clipboard[0][0].as_ref().is_some_and(|c| c.to_string() == "=A1"));
+    assert!(app.clipboard.clipboard[0][0].as_ref().is_some_and(|c| c.value_string() == "=A1"));
 
     // Move cursor to B0
     app.grid.mv_cursor_to(1, 0);
     Mode::process_key(&mut app, 'p');
 
     let a = app.grid.get_cell("B0").as_ref().expect("Should've been set by paste");
-    assert_eq!(a.to_string(), "=B1");
+    assert_eq!(a.value_string(), "=B1");
 
     // Translate Left ====================================================
     // Copy B0
     app.grid.mv_cursor_to(1, 0);
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
 
     // Move cursor to A0
@@ -270,12 +307,12 @@ fn copy_paste_vars_translate() {
     Mode::process_key(&mut app, 'p');
 
     let a = app.grid.get_cell("A0").as_ref().expect("Should've been set by paste");
-    assert_eq!(a.to_string(), "=A1");
+    assert_eq!(a.value_string(), "=A1");
 
     // Translate Down ====================================================
     // Copy A0
     app.grid.mv_cursor_to(0, 0);
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
 
     // Move cursor to A0
@@ -283,12 +320,12 @@ fn copy_paste_vars_translate() {
     Mode::process_key(&mut app, 'p');
 
     let a = app.grid.get_cell("A1").as_ref().expect("Should've been set by paste");
-    assert_eq!(a.to_string(), "=A2");
+    assert_eq!(a.value_string(), "=A2");
 
     // Translate Up ====================================================
     // Copy A1
     app.grid.mv_cursor_to(0, 1);
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
 
     // Move cursor to A0
@@ -296,7 +333,7 @@ fn copy_paste_vars_translate() {
     Mode::process_key(&mut app, 'p');
 
     let a = app.grid.get_cell("A0").as_ref().expect("Should've been set by paste");
-    assert_eq!(a.to_string(), "=A1");
+    assert_eq!(a.value_string(), "=A1");
 }
 
 #[test]
@@ -308,13 +345,13 @@ fn copy_paste_double_locked_var() {
 
     // Copy A0
     app.grid.mv_cursor_to(0, 1);
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
 
     app.grid.mv_cursor_to(1, 0);
     Mode::process_key(&mut app, 'p');
     let c = app.grid.get_cell("B0").as_ref().expect("Just set it");
-    assert_eq!(c.to_string(), "=$A$0");
+    assert_eq!(c.value_string(), "=$A$0");
 }
 
 #[test]
@@ -326,13 +363,13 @@ fn copy_paste_x_locked_var() {
 
     // Copy A0
     app.grid.mv_cursor_to(0, 1);
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
 
     app.grid.mv_cursor_to(1, 2);
     Mode::process_key(&mut app, 'p');
     let c = app.grid.get_cell("B2").as_ref().expect("Just set it");
-    assert_eq!(c.to_string(), "=$A1");
+    assert_eq!(c.value_string(), "=$A1");
 }
 
 #[test]
@@ -344,13 +381,13 @@ fn copy_paste_y_locked_var() {
 
     // Copy A0
     app.grid.mv_cursor_to(0, 1);
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
 
     app.grid.mv_cursor_to(1, 2);
     Mode::process_key(&mut app, 'p');
     let c = app.grid.get_cell("B2").as_ref().expect("Just set it");
-    assert_eq!(c.to_string(), "=B$0");
+    assert_eq!(c.value_string(), "=B$0");
 }
 
 #[test]
@@ -360,13 +397,13 @@ fn copy_paste_var_in_function() {
     Mode::process_key(&mut app, 'j');
 
     app.grid.set_cell("A1", "=math::log2(A0)".to_string());
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
     Mode::process_key(&mut app, 'j');
     Mode::process_key(&mut app, 'p');
 
     let a = app.grid.get_cell("A2").as_ref().expect("Should've been set by paste");
-    assert_eq!(a.to_string(), "=math::log2(A1)");
+    assert_eq!(a.value_string(), "=math::log2(A1)");
 }
 
 #[test]
@@ -378,21 +415,21 @@ fn copy_paste_range_in_function() {
 
     app.grid.set_cell("B0", "=sum(A:A)".to_string());
     app.grid.mv_cursor_to(1, 0);
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
     Mode::process_key(&mut app, 'l');
     Mode::process_key(&mut app, 'p');
 
     let a = app.grid.get_cell("C0").as_ref().expect("Should've been set by paste");
-    assert_eq!(a.to_string(), "=sum(B:B)");
+    assert_eq!(a.value_string(), "=sum(B:B)");
 
     // now copy the range the other direction
     app.grid.mv_cursor_to(2, 0);
-    app.mode = super::mode::Mode::Chord(Chord::new('y'));
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('y'));
     Mode::process_key(&mut app, 'y');
     app.grid.mv_cursor_to(1, 1);
     Mode::process_key(&mut app, 'p');
 
     let a = app.grid.get_cell("B1").as_ref().expect("Should've been set by paste");
-    assert_eq!(a.to_string(), "=sum(A:A)");
+    assert_eq!(a.value_string(), "=sum(A:A)");
 }

@@ -1,5 +1,8 @@
 name: Test Rust project
-on: [push]
+on:
+  push:
+    branches:
+      - master
 jobs:
   test:
     runs-on: ${{ matrix.os }}

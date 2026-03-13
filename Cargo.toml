@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+csv = "1.4.0"
 # evalexpr = "13.0.0"
 # evalexpr ={ path = "../evalexpr"}
 evalexpr = { git="https://github.com/Rushmore75/evalexpr.git" }

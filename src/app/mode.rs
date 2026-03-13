@@ -1,33 +1,48 @@
-use std::{
-    cmp::{max, min},
-    fmt::Display,
-    fs,
-    path::PathBuf,
-    process::Command,
-};
+use std::{cmp::min, fmt::Display, fs, path::PathBuf, process::Command};
 
 use ratatui::{
+    layout::{self, Constraint, Layout, Margin, Offset, Rect},
     prelude,
     style::{Color, Style},
-    widgets::{Paragraph, Widget},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
 
 use crate::app::{
     app::App,
     error_msg::StatusMessage,
     logic::{
-        calc::{Grid, LEN},
-        cell::CellType,
+        cell::{Cell, FormatRule},
+        grid::{GRID_LEN, Grid},
     },
 };
 
+pub const ALL_COLORS: [Color; 16] = [
+    Color::Black,
+    Color::Red,
+    Color::Green,
+    Color::Yellow,
+    Color::Blue,
+    Color::Magenta,
+    Color::Cyan,
+    Color::Gray,
+    Color::DarkGray,
+    Color::LightRed,
+    Color::LightGreen,
+    Color::LightYellow,
+    Color::LightBlue,
+    Color::LightMagenta,
+    Color::LightCyan,
+    Color::White,
+];
+
 pub enum Mode {
-    Insert(Chord),
-    Chord(Chord),
+    Insert(EditBuffer),
+    Chord(EditBuffer),
     Normal,
-    Command(Chord),
+    Command(EditBuffer),
     Visual((usize, usize)),
-    VisualCmd((usize, usize), Chord),
+    VisualCmd((usize, usize), EditBuffer),
+    Formatting(FormatEditor),
 }
 
 impl Display for Mode {
@@ -39,6 +54,7 @@ impl Display for Mode {
             Mode::Command(_) => write!(f, "COMMAND"),
             Mode::Visual(_) => write!(f, "VISUAL"),
             Mode::VisualCmd(_, _) => write!(f, "V-CMD"),
+            Mode::Formatting(_) => write!(f, "FMT"),
         }
     }
 }
@@ -51,6 +67,7 @@ impl Mode {
             Mode::Command(_) => Style::new().fg(Color::Black).bg(Color::Magenta),
             Mode::VisualCmd(_, _) => Style::new().fg(Color::Black).bg(Color::Yellow),
             Mode::Chord(_) => Style::new().fg(Color::Black).bg(Color::LightBlue),
+            Mode::Formatting(_) => Style::new().fg(Color::White).bg(Color::Cyan),
             // Movement-based modes
             Mode::Visual(_) => Style::new().fg(Color::Yellow),
             Mode::Normal => Style::new().fg(Color::Green),
@@ -68,6 +85,8 @@ impl Mode {
             }
 
             match args[0] {
+                "format" => app.grid.set_mode_formatting(),
+                "edit" => app.grid.set_mode_editing(),
                 "w" => {
                     // first try the passed argument as file
                     if let Some(arg) = args.get(1) {
@@ -188,7 +207,7 @@ impl Mode {
                                     .map(|s| s.replace("yi", &j.to_string()))
                                     .map(|s| s.replace("x", &x.to_string()))
                                     .map(|s| s.replace("y", &y.to_string()));
-                                grid.set_cell_raw((x, y), arg);
+                                grid.merge_in_value((x, y), arg);
                             }
                         }
                     });
@@ -237,12 +256,13 @@ impl Mode {
         }
     }
 
+    // Why is this function not just inside app.rs's handle_events()?
     pub fn process_key(app: &mut App, key: char) {
         match &mut app.mode {
             Mode::Normal | Mode::Visual(_) => {
                 match key {
                     // <
-                    'h' => {
+                    'h' | 'b' => {
                         let (x, y) = app.grid.cursor();
                         app.grid.mv_cursor_to(x.saturating_sub(1), y);
                         return;
@@ -250,7 +270,7 @@ impl Mode {
                     // v
                     'j' => {
                         let (x, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(x, min(y.saturating_add(1), LEN - 1));
+                        app.grid.mv_cursor_to(x, min(y.saturating_add(1), GRID_LEN - 1));
                         return;
                     }
                     // ^
@@ -260,9 +280,9 @@ impl Mode {
                         return;
                     }
                     // >
-                    'l' => {
+                    'l' | 'w' => {
                         let (x, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(min(x.saturating_add(1), LEN - 1), y);
+                        app.grid.mv_cursor_to(min(x.saturating_add(1), GRID_LEN - 1), y);
                         return;
                     }
                     '0' => {
@@ -273,26 +293,34 @@ impl Mode {
                     // Go to end of row
                     '$' => {
                         let (_, y) = app.grid.cursor();
-                        app.grid.mv_cursor_to(super::logic::calc::LEN-1, y);
+                        app.grid.mv_cursor_to(GRID_LEN - 1, y);
                         return;
                     }
                     // Go to bottom of column
                     'G' => {
                         let (x, _) = app.grid.cursor();
-                        app.grid.mv_cursor_to(x, super::logic::calc::LEN-1);
+                        app.grid.mv_cursor_to(x, GRID_LEN - 1);
                         return;
                     }
                     // edit cell
                     'i' | 'a' => {
                         let (x, y) = app.grid.cursor();
 
-                        let val = app.grid.get_cell_raw(x, y).as_ref().map(|f| f.to_string()).unwrap_or_default();
+                        let val = app.grid.get_cell_display(x, y);
 
-                        app.mode = Mode::Insert(Chord::from(val));
+                        match app.grid.get_mode() {
+                            super::logic::grid::GridType::Values => app.mode = Mode::Insert(EditBuffer::from(val)),
+                            super::logic::grid::GridType::Formatting => {
+                                let (x, y) = app.grid.cursor();
+                                let cell = app.grid.get_cell_raw(x, y);
+                                let cell = if let Some(cell) = cell { cell.to_owned() } else { Cell::default() };
+                                app.mode = Mode::Formatting(FormatEditor::new(cell));
+                            }
+                        }
                     }
                     // replace cell
                     'r' => {
-                        app.mode = Mode::Insert(Chord::from(String::new()));
+                        app.mode = Mode::Insert(EditBuffer::from(String::new()));
                     }
                     // insert column before
                     'I' => {
@@ -317,9 +345,9 @@ impl Mode {
                     'v' => app.mode = Mode::Visual(app.grid.cursor()),
                     ':' => {
                         if let Self::Visual(pos) = app.mode {
-                            app.mode = Mode::VisualCmd(pos, Chord::new(':'));
+                            app.mode = Mode::VisualCmd(pos, EditBuffer::new(':'));
                         } else {
-                            app.mode = Mode::Command(Chord::new(':'))
+                            app.mode = Mode::Command(EditBuffer::new(':'))
                         }
                     }
                     // undo
@@ -335,7 +363,7 @@ impl Mode {
                     // loose chars will put you into chord mode
                     c => {
                         if let Mode::Normal = app.mode {
-                            app.mode = Mode::Chord(Chord::new(c))
+                            app.mode = Mode::Chord(EditBuffer::new(c))
                         }
                     }
                 }
@@ -362,7 +390,7 @@ impl Mode {
 
                 // the chord starts with a :, send it over to be a command
                 if chord.buf[0] == ':' {
-                    app.mode = Mode::Command(Chord::new(':'));
+                    app.mode = Mode::Command(EditBuffer::new(':'));
                     return;
                 }
 
@@ -467,25 +495,14 @@ impl Mode {
                 }
             }
             // Keys are process in the handle_event method in App for these
+            Mode::Formatting(_cell) => {}
             Mode::Insert(_chord) => {}
             Mode::Command(_chord) => {}
             Mode::VisualCmd(_pos, _chord) => {}
         }
     }
 
-    pub fn chars_to_display(&self, cell: &Option<CellType>) -> u16 {
-        let len = match &self {
-            Mode::Insert(edit) | Mode::VisualCmd(_, edit) | Mode::Command(edit) | Mode::Chord(edit) => edit.len(),
-            Mode::Normal => {
-                cell.as_ref().map(|f| f.to_string().len()).unwrap_or_default()
-            }
-            Mode::Visual(_) => 0,
-        };
-        // min 20 chars, expand if needed
-        max(len as u16 + 1, 20)
-    }
-
-    pub fn render(&self, f: &mut ratatui::Frame, area: prelude::Rect, cell: &Option<CellType>) {
+    pub fn render(&self, f: &mut ratatui::Frame, area: prelude::Rect, cell: String) {
         match &self {
             Mode::Insert(editor) => {
                 f.render_widget(editor, area);
@@ -494,30 +511,35 @@ impl Mode {
                 f.render_widget(editor, area);
             }
             Mode::Chord(chord) => f.render_widget(chord, area),
-            Mode::Normal => f.render_widget(
-                Paragraph::new({
-                    cell.as_ref().map(|f| f.to_string()).unwrap_or_default()
-                }),
-                area,
-            ),
+            Mode::Normal => f.render_widget(Paragraph::new(cell), area),
             Mode::Visual(_) => {}
             Mode::VisualCmd(_, editor) => f.render_widget(editor, area),
+            Mode::Formatting(fmt) => {
+                // this draws over other objects :)
+                let a = f.area();
+                let width = min(25, a.width); // don't draw oob
+                let height = min(20, a.height);
+                let xpos = (a.width / 2).saturating_sub(width / 2); // centered
+                let ypos = (a.height / 2).saturating_sub(height / 2);
+                let area = Rect::new(xpos, ypos, width, height);
+                f.render_widget(fmt, area);
+            }
         }
     }
 }
 
-pub struct Chord {
+pub struct EditBuffer {
     buf: Vec<char>,
 }
 
-impl From<String> for Chord {
+impl From<String> for EditBuffer {
     fn from(value: String) -> Self {
         let b = value.as_bytes().iter().map(|f| *f as char).collect();
-        Chord { buf: b }
+        EditBuffer { buf: b }
     }
 }
 
-impl Chord {
+impl EditBuffer {
     pub fn new(inital: char) -> Self {
         let buf = vec![inital];
 
@@ -540,9 +562,251 @@ impl Chord {
     }
 }
 
-impl Widget for &Chord {
+impl Widget for &EditBuffer {
     fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer) {
         Paragraph::new(self.buf.iter().collect::<String>()).render(area, buf);
+    }
+}
+
+pub struct FormatEditor {
+    pub mode: FormatEditorMode,
+    pub cell: Cell,
+}
+
+impl FormatEditor {
+    fn new(cell: Cell) -> Self {
+        Self { mode: FormatEditorMode::Viewer(RulesViewer::default()), cell }
+    }
+}
+
+pub enum FormatEditorMode {
+    Viewer(RulesViewer),
+    Editor(RuleEditor),
+}
+
+#[derive(Default)]
+pub struct RulesViewer {
+    pub index: u16,
+}
+
+pub enum EditingState {
+    Selecting(usize),
+    Value(EditBuffer),
+    Sign(usize),
+    FG(usize),
+    BG(usize),
+}
+
+pub struct RuleEditor {
+    pub editing: EditingState,
+    pub rule: FormatRule<f64>,
+    pub cell_rule_index: usize,
+}
+
+impl RuleEditor {
+    pub fn new(rule: FormatRule<f64>, idx: usize) -> Self {
+        Self { editing: EditingState::Selecting(0), rule, cell_rule_index: idx }
+    }
+}
+
+impl Widget for &FormatEditor {
+    fn render(self, area: prelude::Rect, buf: &mut prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let secondary = Style::new().fg(Color::DarkGray).bg(Color::Black);
+        let primary = Style::new().fg(Color::White).bg(Color::Black);
+        let primary_inverse = Style::default().fg(Color::Black).bg(Color::White);
+
+        let title;
+        let block = Block::default()
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .borders(Borders::all())
+            .style(secondary);
+
+        ratatui::widgets::Clear.render(area, buf);
+        let inner = area.inner(Margin::new(1, 1));
+        block.render(area, buf);
+
+        match &self.mode {
+            FormatEditorMode::Viewer(rules_viewer) => {
+                title = "Format Rules";
+                let line = Rect::new(inner.x, inner.y, inner.width, 1);
+                let display = self.cell.value_string();
+                let display = if display.is_empty() { "Empty".to_string() } else { display };
+                Paragraph::new(display).style(secondary).render(line, buf);
+
+                let mut l_arrow = line.offset(Offset { x: -1, y: rules_viewer.index as i32 + 1 });
+                l_arrow.width = 1;
+                let r_arrow = l_arrow.offset(Offset { x: area.width as i32 - 1, y: 0 });
+                Paragraph::new("→").style(primary).render(l_arrow, buf);
+                Paragraph::new("←").style(primary).render(r_arrow, buf);
+
+                let scroll = 0; // For later when we might have longer rules lists
+
+                self.cell.formatting.rules.iter().skip(scroll).zip(1..inner.height).for_each(|(fmt, offset)| {
+                    let line = line.offset(Offset { x: 0, y: offset as i32 });
+                    fmt.render(line, buf);
+                });
+
+                let line = line.offset(Offset { x: 0, y: inner.height.into() });
+                Paragraph::new("'s' to save").centered().style(secondary).render(line, buf);
+            }
+            FormatEditorMode::Editor(rule_editor) => {
+                match &rule_editor.editing {
+                    EditingState::Selecting(index) => {
+                        title = "Formatter";
+                        let mut sign_color = primary;
+                        let mut value_color = primary;
+                        let mut fg_color = primary;
+                        let mut bg_color = primary;
+                        let mut yes_color = primary;
+                        let mut no_color = primary;
+
+                        let layout = Layout::default()
+                            .direction(layout::Direction::Vertical)
+                            .constraints([
+                                // title
+                                Constraint::Max(1),
+                                // comparitor
+                                Constraint::Max(1),
+                                // then color:
+                                Constraint::Max(1),
+                                // colors
+                                Constraint::Max(1),
+                                Constraint::Max(1),
+                                // Ok / Cancel
+                                Constraint::Max(1),
+                            ])
+                            .split(inner);
+
+                        let title = layout[0];
+                        let comparitor = layout[1];
+                        let then = layout[2];
+                        let fg = layout[3];
+                        let bg = layout[4];
+                        let submit = layout[5];
+
+                        match index {
+                            0 => {
+                                sign_color = primary_inverse;
+                            }
+                            1 => {
+                                value_color = primary_inverse;
+                            }
+                            2 => {
+                                fg_color = primary_inverse;
+                            }
+                            3 => {
+                                bg_color = primary_inverse;
+                            }
+                            4 => yes_color = primary_inverse,
+                            5 => no_color = primary_inverse,
+                            _ => {}
+                        }
+
+                        Paragraph::new("If value is:").style(secondary).render(title, buf);
+                        let comp = Layout::default()
+                            .direction(layout::Direction::Horizontal)
+                            .constraints([Constraint::Ratio(1, 2); 2])
+                            .split(comparitor);
+                        Paragraph::new(rule_editor.rule.sign_char().to_string())
+                            .centered()
+                            .style(sign_color)
+                            .render(comp[0], buf);
+                        Paragraph::new(rule_editor.rule.get_threashold().to_string())
+                            .centered()
+                            .style(value_color)
+                            .render(comp[1], buf);
+                        Paragraph::new("then color:").style(secondary).render(then, buf);
+                        let fg = Layout::default()
+                            .direction(layout::Direction::Horizontal)
+                            .constraints([Constraint::Max(3), Constraint::Fill(1)])
+                            .split(fg);
+                        Paragraph::new("FG").style(secondary).render(fg[0], buf);
+                        Paragraph::new(rule_editor.rule.style_string().0).style(fg_color).render(fg[1], buf);
+                        let bg = Layout::default()
+                            .direction(layout::Direction::Horizontal)
+                            .constraints([Constraint::Max(3), Constraint::Fill(1)])
+                            .split(bg);
+                        Paragraph::new("BG").style(secondary).render(bg[0], buf);
+                        Paragraph::new(rule_editor.rule.style_string().1).style(bg_color).render(bg[1], buf);
+                        let sub = Layout::default()
+                            .direction(layout::Direction::Horizontal)
+                            .constraints([Constraint::Fill(1), Constraint::Fill(1), Constraint::Fill(1)])
+                            .split(submit);
+                        Paragraph::new("Submit?").style(secondary).render(sub[0], buf);
+                        Paragraph::new("Yes").style(yes_color).render(sub[1], buf);
+                        Paragraph::new("No").style(no_color).render(sub[2], buf);
+                    }
+                    EditingState::Value(edit) => {
+                        title = "Value";
+                        if edit.as_string().is_empty() {
+                            Paragraph::new("xxx")
+                        } else {
+                            Paragraph::new(edit.as_string())
+                        }
+                        .centered()
+                        .style(primary)
+                        .render(inner, buf);
+                    }
+                    EditingState::Sign(index) => {
+                        title = "Choose Sign";
+                        let mut eq_color = primary;
+                        let mut gt_color = primary;
+                        let mut lt_color = primary;
+
+                        let layout = Layout::default()
+                            .direction(layout::Direction::Vertical)
+                            .constraints([
+                                // title
+                                Constraint::Max(1),
+                                // comparitor
+                                Constraint::Max(1),
+                                // then color:
+                                Constraint::Max(1),
+                                // colors
+                                Constraint::Max(1),
+                            ])
+                            .split(inner);
+                        let sign = layout[0];
+                        let eq = layout[1];
+                        let gt = layout[2];
+                        let lt = layout[3];
+
+                        match index {
+                            0 => {
+                                eq_color = primary_inverse;
+                            }
+                            1 => {
+                                gt_color = primary_inverse;
+                            }
+                            2 => {
+                                lt_color = primary_inverse;
+                            }
+                            _ => {}
+                        }
+
+                        Paragraph::new("Operator").style(secondary).render(sign, buf);
+                        Paragraph::new("Equals (=)").style(eq_color).render(eq, buf);
+                        Paragraph::new("Greater than (>)").style(gt_color).render(gt, buf);
+                        Paragraph::new("Less than (<)").style(lt_color).render(lt, buf);
+                    }
+                    EditingState::BG(index) | EditingState::FG(index) => {
+                        title = "Select Color";
+                        let mut area = Rect::new(inner.x, inner.y, inner.width, 1);
+                        for (i, c) in ALL_COLORS.iter().enumerate() {
+                            let style = if i == *index { primary_inverse } else { primary };
+                            Paragraph::new(c.to_string()).style(style).render(area, buf);
+                            area = area.offset(Offset { x: 0, y: 1 });
+                        }
+                    }
+                }
+            }
+        }
+
+        let line = Rect::new(inner.x, inner.y - 1, title.len() as u16, 1);
+        Paragraph::new(title).centered().style(primary).render(line, buf);
     }
 }
 
@@ -573,7 +837,7 @@ fn keybinds() {
     assert_eq!(app.grid.cursor(), (1, 1));
 
     // gg
-    app.mode = Mode::Chord(Chord::new('g'));
+    app.mode = Mode::Chord(EditBuffer::new('g'));
     Mode::process_key(&mut app, 'g');
     assert_eq!(app.grid.cursor(), (1, 0));
 
@@ -585,7 +849,7 @@ fn keybinds() {
     // 10l
     // this should mean all the directions work
     app.grid.mv_cursor_to(0, 0);
-    app.mode = Mode::Chord(Chord::new('1'));
+    app.mode = Mode::Chord(EditBuffer::new('1'));
     Mode::process_key(&mut app, '0');
     Mode::process_key(&mut app, 'l');
     assert_eq!(app.grid.cursor(), (10, 0));
