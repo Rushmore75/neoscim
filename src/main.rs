@@ -4,6 +4,9 @@
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::collapsible_match)]
 #![allow(clippy::single_match)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::todo)]
+#![deny(clippy::unimplemented)]
 
 mod app;
 

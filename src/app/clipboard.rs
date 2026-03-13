@@ -1,4 +1,4 @@
-use crate::app::logic::{cell::Cell, grid::{Grid, GridType}};
+use crate::app::logic::{cell::{Cell, Formatting}, grid::{Grid, GridType}};
 
 #[cfg(test)]
 use crate::app::{
@@ -115,22 +115,24 @@ impl Clipboard {
         let (low_x, hi_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
         let (low_y, hi_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
 
-        // size the clipboard appropriately
-        self.clipboard.clear();
+        self.clipboard_copy(start, end, from);
+        let mode = from.get_mode();
 
         from.transact_on_grid(|grid| {
             // clone data into clipboard
             for x in low_x..=hi_x {
-                let mut col = Vec::new();
                 for y in low_y..=hi_y {
-                    let a = grid.get_cell_raw(x, y);
-                    col.push(a.clone());
-                    grid.merge_in_value::<String>((x,y), None);
+                    match mode {
+                        GridType::Values => {
+                            grid.merge_in_value::<String>((x,y), None);
+                        },
+                        GridType::Formatting => {
+                            grid.merge_in_formatting((x,y), Formatting::default());
+                        },
+                    }
                 }
-                self.clipboard.push(col);
             }
         });
-        self.last_paste_cell = (low_x, low_y);
     }
 }
 
@@ -153,6 +155,29 @@ fn copy_paste() {
 
     let a = app.grid.get_cell("B1").as_ref().expect("Should've been set by paste");
     assert_eq!(a.value_string(), "hello");
+}
+
+#[test]
+fn cut() {
+    let mut app = App::new();
+
+    app.grid.set_cell("A0", "hello".to_string());
+    app.grid.mv_cursor_to(0, 0);
+
+    app.mode = super::mode::Mode::Chord(EditBuffer::new('d'));
+    Mode::process_key(&mut app, ' ');
+
+    assert_eq!(app.clipboard.clipboard.len(), 1);
+    assert!(app.clipboard.clipboard[0][0].as_ref().is_some_and(|c| c.value_string() == "hello"));
+
+    app.grid.mv_cursor_to(1, 1);
+    Mode::process_key(&mut app, 'p');
+
+    let a = app.grid.get_cell("B1").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.value_string(), "hello");
+
+    let a = app.grid.get_cell("A0").as_ref().expect("Should've been set by paste");
+    assert_eq!(a.value_string(), "");
 }
 
 #[test]
