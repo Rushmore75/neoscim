@@ -197,11 +197,8 @@ impl Grid {
         let mut grid = Self::new();
 
         let mut csv_reader = csv::ReaderBuilder::new().flexible(true).has_headers(false).from_path(&file)?;
-        file.add_extension("style");
-        let mut style_reader = fs::OpenOptions::new().read(true).open(file)?;
-        let mut buf = String::new();
-        style_reader.read_to_string(&mut buf)?;
 
+        // create normal grid
         grid.transact_on_grid(|grid| {
             // injest data csv
             csv_reader.records().enumerate().for_each(|(yi, f)| {
@@ -215,32 +212,41 @@ impl Grid {
                     }
                 }
             });
-
-            // injest style file
-            for line in buf.lines() {
-                let splits = line.split(')').collect::<Vec<&str>>();
-                let location = splits[0];
-                let fmt = splits[1];
-                let location = location.replace('(', "");
-                let xy = location.split(',').collect::<Vec<&str>>();
-                let x = xy[0].parse::<usize>();
-                let y = xy[1].parse::<usize>();
-
-                // if all the data is good...
-                if let (Ok(x), Ok(y)) = (x, y) {
-                    if let Some(rule) = FormatRule::deserialize(fmt) {
-                        let mut fmt = Formatting::default();
-                        // read old formatting value out of the existing cell
-                        if let Some(cell) = grid.get_cell_raw(x, y) {
-                            fmt = cell.formatting.clone();
-                        }
-                        // merge all formatting rules together and put it in the grid
-                        fmt.rules.push(rule);
-                        grid.merge_in_formatting((x, y), fmt);
-                    };
-                }
-            }
         });
+
+        // if there is a style file, load it
+        file.add_extension("style");
+        if let Ok(mut style_reader) = fs::OpenOptions::new().read(true).open(&file) {
+            let mut buf = String::new();
+            style_reader.read_to_string(&mut buf)?;
+
+            grid.transact_on_grid(|grid| {
+                // injest style file
+                for line in buf.lines() {
+                    let splits = line.split(')').collect::<Vec<&str>>();
+                    let location = splits[0];
+                    let fmt = splits[1];
+                    let location = location.replace('(', "");
+                    let xy = location.split(',').collect::<Vec<&str>>();
+                    let x = xy[0].parse::<usize>();
+                    let y = xy[1].parse::<usize>();
+
+                    // if all the data is good...
+                    if let (Ok(x), Ok(y)) = (x, y) {
+                        if let Some(rule) = FormatRule::deserialize(fmt) {
+                            let mut fmt = Formatting::default();
+                            // read old formatting value out of the existing cell
+                            if let Some(cell) = grid.get_cell_raw(x, y) {
+                                fmt = cell.formatting.clone();
+                            }
+                            // merge all formatting rules together and put it in the grid
+                            fmt.rules.push(rule);
+                            grid.merge_in_formatting((x, y), fmt);
+                        };
+                    }
+                }
+            });
+        }
 
         // force dirty back off, we just read the data so it's gtg
         grid.dirty = false;
