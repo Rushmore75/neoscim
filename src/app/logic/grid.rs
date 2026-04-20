@@ -55,7 +55,9 @@ mod internal {
                 }
                 a.push(b)
             }
-            Self { cells: a }
+            Self {
+                cells: a,
+            }
         }
 
         pub fn insert_row(&mut self, y: usize) {
@@ -91,18 +93,30 @@ mod internal {
 
         pub fn merge_in_formatting(&mut self, (x, y): (usize, usize), val: Formatting) {
             let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
-                Cell { value: prev_cell.value.clone(), formatting: val }
+                Cell {
+                    value: prev_cell.value.clone(),
+                    formatting: val,
+                }
             } else {
-                Cell { value: None, formatting: val }
+                Cell {
+                    value: None,
+                    formatting: val,
+                }
             };
             self.cells[x][y] = Some(cell)
         }
 
         pub fn merge_in_value<T: Into<CellType>>(&mut self, (x, y): (usize, usize), val: Option<T>) {
             let cell = if let Some(prev_cell) = self.get_cell_raw(x, y) {
-                Cell { value: val.map(|f| f.into()), formatting: prev_cell.formatting.clone() }
+                Cell {
+                    value: val.map(|f| f.into()),
+                    formatting: prev_cell.formatting.clone(),
+                }
             } else {
-                Cell { value: val.map(|f| f.into()), ..Default::default() }
+                Cell {
+                    value: val.map(|f| f.into()),
+                    ..Default::default()
+                }
             };
             // TODO check oob
             self.cells[x][y] = Some(cell)
@@ -178,7 +192,12 @@ impl Grid {
     pub fn new() -> Self {
         let x = CellGrid::new();
 
-        Self { current_grid: 0, grid_history: vec![x], selected_cell: (0, 0), dirty: false }
+        Self {
+            current_grid: 0,
+            grid_history: vec![x],
+            selected_cell: (0, 0),
+            dirty: false,
+        }
     }
 
     pub fn get_mode(&self) -> GridType {
@@ -283,9 +302,16 @@ impl Grid {
         }
 
         let mut data_csv = csv::WriterBuilder::new().has_headers(false).from_path(&path)?;
-        path.add_extension("style");
-        let mut formatting_file =
-            fs::OpenOptions::new().truncate(true).append(false).write(true).create(true).open(path)?;
+        let mut formatting_file = if is_csv_file {
+            // if this is a csv file, don't
+            // bother saving the formatting
+            None
+        } else {
+            path.add_extension("style");
+            let formatting_file =
+                fs::OpenOptions::new().truncate(true).append(false).write(true).create(true).open(path)?;
+            Some(formatting_file)
+        };
 
         let (mx, my) = self.get_grid().max();
         for y in 0..=my {
@@ -306,7 +332,7 @@ impl Grid {
                         }
                     } else {
                         data_line.push(cell.value_string());
-                        style_line.push((&cell.formatting, (x,y)));
+                        style_line.push((&cell.formatting, (x, y)));
                     }
                 } else {
                     data_line.push("".to_string());
@@ -315,14 +341,19 @@ impl Grid {
 
             // write to disk
             data_csv.write_record(data_line)?;
-            for (style, (x, y)) in style_line {
-                for rule in &style.rules {
-                    formatting_file.write_all(format!("({x},{y}){}\n", rule.serialize()).as_bytes())?;
+
+            if let Some(formatting_file) = &mut formatting_file {
+                for (style, (x, y)) in style_line {
+                    for rule in &style.rules {
+                        formatting_file.write_all(format!("({x},{y}){}\n", rule.serialize()).as_bytes())?;
+                    }
                 }
             }
         }
         data_csv.flush()?;
-        formatting_file.flush()?;
+        if let Some(f) = &mut formatting_file {
+            f.flush()?;
+        }
 
         self.dirty = false;
         Ok(())
@@ -502,7 +533,10 @@ impl Grid {
                 EvalexprError::VariableIdentifierNotFound(var_not_found) => {
                     return Err(format!("\"{var_not_found}\" is not a variable"));
                 }
-                EvalexprError::TypeError { expected: e, actual: a } => {
+                EvalexprError::TypeError {
+                    expected: e,
+                    actual: a,
+                } => {
                     // IE: You put a string into a function that wants a float
                     return Err(format!("Wanted {e:?}, got {a}"));
                 }
